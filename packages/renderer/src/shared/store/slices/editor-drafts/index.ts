@@ -279,6 +279,32 @@ const editorDraftsSlice = createSlice({
         draft[buffer] = action.payload.code;
         draft.dirty[buffer] = false;
         draft.revision += 1;
+      })
+      // commitDraftForSave runs before the sync write so same-tab storage echoes
+      // do not false-positive; if the write fails, restore the dirty flag.
+      .addCase(updateUserscriptCode.rejected, (state, action) => {
+        const { id, language } = action.meta.arg;
+        const draft = state.drafts[id];
+
+        if (!draft) {
+          return;
+        }
+
+        const buffer: DraftBuffer =
+          language === "typescript" ? "typescript" : "scss";
+
+        draft.dirty[buffer] = true;
+        draft.revision += 1;
+      })
+      .addCase(updateUserscriptTypeDefinitions.rejected, (state, action) => {
+        const draft = state.drafts[action.meta.arg.id];
+
+        if (!draft) {
+          return;
+        }
+
+        draft.dirty.typeDefinitions = true;
+        draft.revision += 1;
       });
   },
 });
