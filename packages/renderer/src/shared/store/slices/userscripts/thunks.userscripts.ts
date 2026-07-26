@@ -384,7 +384,7 @@ export const updateUserscriptTypeDefinitions = createAsyncThunk(
   "userscripts/updateUserscriptTypeDefinitions",
   async (
     { id, typeDefinitions }: { id: string; typeDefinitions: string },
-    { dispatch }
+    { dispatch, requestId }
   ) => {
     const scriptsMap = await ChromeSyncStorage.getAllScripts();
     const script = normalizeUserscript(scriptsMap[id]);
@@ -400,6 +400,7 @@ export const updateUserscriptTypeDefinitions = createAsyncThunk(
         scriptId: id,
         buffer: "typeDefinitions",
         code: typeDefinitions,
+        saveRequestId: requestId,
       })
     );
 
@@ -419,7 +420,7 @@ export const updateUserscriptCode = createAsyncThunk<
   { state: RootState }
 >(
   "userscripts/updateUserscriptCode",
-  async ({ id, language, code }, { getState, dispatch }) => {
+  async ({ id, language, code }, { getState, dispatch, requestId }) => {
     const scriptsMap = await ChromeSyncStorage.getAllScripts();
     const script = normalizeUserscript(scriptsMap[id]);
 
@@ -450,6 +451,7 @@ export const updateUserscriptCode = createAsyncThunk<
         scriptId: id,
         buffer: language === "typescript" ? "typescript" : "scss",
         code,
+        saveRequestId: requestId,
       })
     );
 
