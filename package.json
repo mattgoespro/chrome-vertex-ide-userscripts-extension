@@ -21,7 +21,7 @@
     "dev": "webpack --mode development --watch",
     "clean": "rm -rf dist && rm -rf node_modules/.cache",
     "lint": "eslint packages plugins examples",
-    "test": "node --loader ts-node/esm --test tests/*.test.mjs",
+    "test": "TS_NODE_PROJECT=tsconfig.tools.json NODE_OPTIONS='--import ./tests/register-aliases.mjs --loader ts-node/esm' node --test tests/*.test.mjs",
     "format": "prettier --write .",
     "build:examples": "tsc -p examples/tsconfig.json",
     "e2e": "playwright test --headed",
