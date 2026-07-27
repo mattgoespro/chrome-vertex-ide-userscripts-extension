@@ -6,18 +6,13 @@ import {
   syncCdnModuleLibs,
   syncModulePackageJsons,
   syncWorkspaceModels,
-  type CdnModuleInfo,
   type SharedModuleSpecifierInfo,
   type WorkspaceFile,
 } from "@packages/monaco";
-import { getScriptModulePath, Userscript } from "@shared/model";
+import { getScriptModulePath } from "@shared/model";
 import type { AppStore, RootState } from "../store/store";
-import type { EditorDraft } from "../store/slices/editor-drafts";
 import { registerBespokeCodeActions } from "../utils/quick-fix-provider";
-import {
-  isModuleDeclarationFile,
-  stripExportsForAmbientLib,
-} from "./ambient-type-defs";
+import { buildWorkspaceSyncPlan } from "./workspace-sync-plan";
 
 /**
  * The single owner of all store → Monaco synchronization.
@@ -43,24 +38,6 @@ import {
  */
 
 const SYNC_DEBOUNCE_MS = 50;
-
-function getDraftBuffer(
-  script: Userscript,
-  draft: EditorDraft | undefined,
-  buffer: "typescript" | "scss" | "typeDefinitions"
-): { contents: string; dirty: boolean } {
-  if (!draft) {
-    return {
-      contents:
-        buffer === "typeDefinitions"
-          ? (script.typeDefinitions ?? "")
-          : script.code.source[buffer],
-      dirty: false,
-    };
-  }
-
-  return { contents: draft[buffer], dirty: draft.dirty[buffer] };
-}
 
 function selectSharedModuleInfos(
   state: RootState
@@ -122,76 +99,55 @@ export function startWorkspaceService(store: AppStore): () => void {
 
     lastSignature = signature;
 
+    const plan = buildWorkspaceSyncPlan({
+      scripts,
+      drafts,
+      currentScriptId: currentScript?.id,
+      currentGlobalModules: currentScript?.globalModules,
+      modules,
+    });
+
+    const scriptById = new Map(scripts.map((script) => [script.id, script]));
     const files: WorkspaceFile[] = [];
     const modulePaths: string[] = [];
-    const ambientLibs: Array<{
-      id: string;
-      filePath: string;
-      contents: string;
-    }> = [];
 
-    for (const script of scripts) {
-      const modulePath = getScriptModulePath(script);
-      const draft = drafts[script.id];
-      const main = getDraftBuffer(script, draft, "typescript");
-      const types = getDraftBuffer(script, draft, "typeDefinitions");
-      const styles = getDraftBuffer(script, draft, "scss");
+    for (const buffer of plan.buffers) {
+      const script = scriptById.get(buffer.scriptId);
 
-      modulePaths.push(modulePath);
+      if (!script) {
+        continue;
+      }
+
+      modulePaths.push(buffer.modulePath);
 
       files.push(
         {
           uri: buildScriptFileUri(script, "main"),
           language: "typescript",
-          contents: main.contents,
-          preserveAttachedBuffer: main.dirty,
+          contents: buffer.main.contents,
+          preserveAttachedBuffer: buffer.main.dirty,
         },
         {
           uri: buildScriptFileUri(script, "types"),
           language: "typescript",
-          contents: types.contents,
-          preserveAttachedBuffer: types.dirty,
+          contents: buffer.types.contents,
+          preserveAttachedBuffer: buffer.types.dirty,
         },
         {
           uri: buildScriptFileUri(script, "styles"),
           language: "scss",
-          contents: styles.contents,
-          preserveAttachedBuffer: styles.dirty,
+          contents: buffer.styles.contents,
+          preserveAttachedBuffer: buffer.styles.dirty,
         }
       );
-
-      // Type panes that are modules lose their global visibility; register an
-      // export-stripped ambient copy alongside the real model. Non-module
-      // panes are already global via the model itself. Skip the open script's
-      // own type pane — the real model is already attached to its editor and
-      // an ambient copy would duplicate its declarations.
-      if (
-        script.id !== currentScript?.id &&
-        isModuleDeclarationFile(types.contents)
-      ) {
-        const ambientContents = stripExportsForAmbientLib(types.contents);
-
-        if (ambientContents.trim()) {
-          ambientLibs.push({
-            id: `ambient:${script.id}`,
-            filePath: `file:///scripts/${modulePath}/types.ambient.d.ts`,
-            contents: ambientContents,
-          });
-        }
-      }
     }
 
     syncModulePackageJsons(modulePaths);
     syncWorkspaceModels(files);
-    syncAmbientTypeDefinitionLibs(ambientLibs);
+    syncAmbientTypeDefinitionLibs(plan.ambientLibs);
 
     // CDN type acquisition is scoped to the open script and never blocks.
-    const cdnModules: CdnModuleInfo[] = (currentScript?.globalModules ?? [])
-      .map((id) => state.modules.modules[id])
-      .filter((module) => module?.packageName)
-      .map((module) => ({ id: module.id, packageName: module.packageName! }));
-
-    void syncCdnModuleLibs(cdnModules).catch((error) => {
+    void syncCdnModuleLibs(plan.cdnModules).catch((error) => {
       console.warn("CDN type acquisition failed:", error);
     });
   };

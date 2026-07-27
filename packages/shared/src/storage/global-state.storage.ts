@@ -50,6 +50,34 @@ export interface GlobalState {
   panelSizes?: GlobalStateSizes;
 }
 
+export const DEFAULT_GLOBAL_STATE: GlobalState = {
+  activeSidebarTab: "scripts",
+  selectedScriptId: null,
+  outputDrawerCollapsed: false,
+  outputDrawerActiveTab: "javascript",
+  panelSizes: {
+    scriptListSidebarWidth: 30,
+    scriptCodeEditorHorizontalSplit: 50,
+    scriptTypeDefinitionsVerticalSplit: 68,
+    scriptCompiledOutputDrawerSplit: 70,
+  },
+};
+
+/**
+ * Merge a sparse/partial persisted UI state with defaults. Nested `panelSizes`
+ * are deep-merged so a partial panelSizes write cannot wipe other panel sizes.
+ */
+export function mergeGlobalState(stored?: GlobalState | null): GlobalState {
+  return {
+    ...DEFAULT_GLOBAL_STATE,
+    ...(stored ?? {}),
+    panelSizes: {
+      ...DEFAULT_GLOBAL_STATE.panelSizes,
+      ...(stored?.panelSizes ?? {}),
+    } satisfies GlobalStateSizes,
+  };
+}
+
 export class GlobalStateManager {
   private static readonly storageKey = "globalState";
 
@@ -59,16 +87,8 @@ export class GlobalStateManager {
    */
   static get defaultState(): GlobalState {
     return {
-      activeSidebarTab: "scripts",
-      selectedScriptId: null,
-      outputDrawerCollapsed: false,
-      outputDrawerActiveTab: "javascript",
-      panelSizes: {
-        scriptListSidebarWidth: 30,
-        scriptCodeEditorHorizontalSplit: 50,
-        scriptTypeDefinitionsVerticalSplit: 68,
-        scriptCompiledOutputDrawerSplit: 70,
-      },
+      ...DEFAULT_GLOBAL_STATE,
+      panelSizes: { ...DEFAULT_GLOBAL_STATE.panelSizes },
     };
   }
 
@@ -81,14 +101,7 @@ export class GlobalStateManager {
     ]);
     const stored = result[this.storageKey];
 
-    return {
-      ...this.defaultState,
-      ...(stored ?? {}),
-      panelSizes: {
-        ...this.defaultState.panelSizes,
-        ...(stored?.panelSizes ?? {}),
-      } satisfies GlobalStateSizes,
-    };
+    return mergeGlobalState(stored);
   }
 
   /**
