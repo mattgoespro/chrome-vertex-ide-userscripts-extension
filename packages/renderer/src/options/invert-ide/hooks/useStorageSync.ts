@@ -1,8 +1,6 @@
 import { useAppDispatch } from "@/shared/store/hooks";
-import {
-  getAffectedScriptIdsFromStorageChanges,
-  refreshScriptsFromStorage,
-} from "@/shared/store/slices/editor-drafts/thunks.storage-sync";
+import { getAffectedScriptIdsFromStorageChanges } from "@/shared/store/slices/editor-drafts/helpers";
+import { refreshScriptsFromStorage } from "@/shared/store/slices/editor-drafts/thunks.storage-sync";
 import { useEffect, useRef } from "react";
 
 export function useStorageSync() {

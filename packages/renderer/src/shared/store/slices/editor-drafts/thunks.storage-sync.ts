@@ -36,23 +36,6 @@ function mergeCompiledCode(
   };
 }
 
-function parseUserscriptIdFromKey(key: string): string | null {
-  const prefix = "userscript:";
-
-  if (!key.startsWith(prefix)) {
-    return null;
-  }
-
-  const remainder = key.slice(prefix.length);
-  const chunkIndex = remainder.indexOf(":chunk:");
-
-  if (chunkIndex === -1) {
-    return remainder;
-  }
-
-  return remainder.slice(0, chunkIndex);
-}
-
 export const refreshScriptsFromStorage = createAsyncThunk<
   { syncedScripts: Userscript[]; conflictIds: string[] },
   { scriptIds?: string[] } | undefined,
@@ -114,19 +97,3 @@ export const refreshScriptsFromStorage = createAsyncThunk<
     return { syncedScripts, conflictIds };
   }
 );
-
-export function getAffectedScriptIdsFromStorageChanges(
-  changes: Record<string, chrome.storage.StorageChange>
-): string[] {
-  const scriptIds = new Set<string>();
-
-  for (const key of Object.keys(changes)) {
-    const scriptId = parseUserscriptIdFromKey(key);
-
-    if (scriptId) {
-      scriptIds.add(scriptId);
-    }
-  }
-
-  return [...scriptIds];
-}
