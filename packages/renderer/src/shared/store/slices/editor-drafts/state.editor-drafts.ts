@@ -8,6 +8,8 @@ export type EditorDraft = {
   typeDefinitions: string;
   dirty: Record<DraftBuffer, boolean>;
   revision: number;
+  /** Request id of the most recent commitDraftForSave per buffer. */
+  lastSaveRequestId: Partial<Record<DraftBuffer, string>>;
 };
 
 export type RemoteDraftConflictBuffer = {
@@ -44,6 +46,7 @@ export function draftFromScript(script: Userscript): EditorDraft {
       typeDefinitions: false,
     },
     revision: 0,
+    lastSaveRequestId: {},
   };
 }
 

@@ -195,12 +195,14 @@ const editorDraftsSlice = createSlice({
   extraReducers: (builder) => {
     builder
       .addCase(commitDraftForSave, (state, action) => {
-        const { scriptId, buffer, code } = action.payload;
+        const { scriptId, buffer, code, saveRequestId } = action.payload;
         const draft = state.drafts[scriptId];
 
         if (!draft) {
           return;
         }
+
+        draft.lastSaveRequestId[buffer] = saveRequestId;
 
         if (draft[buffer] === code && !draft.dirty[buffer]) {
           return;
@@ -278,6 +280,42 @@ const editorDraftsSlice = createSlice({
 
         draft[buffer] = action.payload.code;
         draft.dirty[buffer] = false;
+        draft.revision += 1;
+      })
+      // commitDraftForSave runs before the sync write so same-tab storage echoes
+      // do not false-positive; if the write fails, restore the dirty flag.
+      // Ignore rejections from superseded in-flight saves so a stale failure
+      // cannot mark the draft dirty after a newer save already committed.
+      .addCase(updateUserscriptCode.rejected, (state, action) => {
+        const { id, language } = action.meta.arg;
+        const draft = state.drafts[id];
+
+        if (!draft) {
+          return;
+        }
+
+        const buffer: DraftBuffer =
+          language === "typescript" ? "typescript" : "scss";
+
+        if (draft.lastSaveRequestId[buffer] !== action.meta.requestId) {
+          return;
+        }
+
+        draft.dirty[buffer] = true;
+        draft.revision += 1;
+      })
+      .addCase(updateUserscriptTypeDefinitions.rejected, (state, action) => {
+        const draft = state.drafts[action.meta.arg.id];
+
+        if (!draft) {
+          return;
+        }
+
+        if (draft.lastSaveRequestId.typeDefinitions !== action.meta.requestId) {
+          return;
+        }
+
+        draft.dirty.typeDefinitions = true;
         draft.revision += 1;
       });
   },

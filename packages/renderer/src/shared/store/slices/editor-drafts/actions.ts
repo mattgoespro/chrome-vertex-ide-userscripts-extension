@@ -10,4 +10,5 @@ export const commitDraftForSave = createAction<{
   scriptId: string;
   buffer: DraftBuffer;
   code: string;
+  saveRequestId: string;
 }>("editorDrafts/commitDraftForSave");
