@@ -31,9 +31,12 @@ test("matchScriptsSpecifierPrefix matches dynamic import from scripts/", () => {
 test("matchScriptsSpecifierPrefix returns null outside scripts/ import prefixes", () => {
   assert.equal(matchScriptsSpecifierPrefix('import { x } from "lodash'), null);
   assert.equal(matchScriptsSpecifierPrefix("const x = 1;"), null);
+});
+
+test("matchScriptsSpecifierPrefix also matches import type from scripts/", () => {
   assert.equal(
     matchScriptsSpecifierPrefix('import type { X } from "scripts/dom'),
-    null
+    "dom"
   );
 });
 
