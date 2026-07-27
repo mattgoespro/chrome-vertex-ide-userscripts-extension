@@ -28,6 +28,7 @@ test("draftFromScript copies source buffers and starts clean at revision 0", () 
       typeDefinitions: false,
     },
     revision: 0,
+    lastSaveRequestId: {},
   });
 });
 
@@ -98,5 +99,6 @@ test("bumpDraftRevision replaces buffers from the remote script and increments r
       typeDefinitions: false,
     },
     revision: 5,
+    lastSaveRequestId: {},
   });
 });
