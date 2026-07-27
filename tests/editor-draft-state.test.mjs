@@ -28,6 +28,7 @@ test("draftFromScript copies source buffers and starts clean at revision 0", () 
       typeDefinitions: false,
     },
     revision: 0,
+    lastSaveRequestId: {},
   });
 });
 
@@ -44,6 +45,7 @@ test("isDraftDirty is false for missing drafts and clean buffers", () => {
         typeDefinitions: false,
       },
       revision: 0,
+      lastSaveRequestId: {},
     }),
     false
   );
@@ -61,6 +63,7 @@ test("isDraftDirty is true when any buffer is dirty", () => {
         typeDefinitions: false,
       },
       revision: 2,
+      lastSaveRequestId: {},
     }),
     true
   );
@@ -77,6 +80,7 @@ test("bumpDraftRevision replaces buffers from the remote script and increments r
       typeDefinitions: true,
     },
     revision: 4,
+    lastSaveRequestId: { typescript: "stale" },
   };
   const remote = buildUserscriptFixture({
     typeDefinitions: "export type Remote = number;",
@@ -98,5 +102,6 @@ test("bumpDraftRevision replaces buffers from the remote script and increments r
       typeDefinitions: false,
     },
     revision: 5,
+    lastSaveRequestId: {},
   });
 });
