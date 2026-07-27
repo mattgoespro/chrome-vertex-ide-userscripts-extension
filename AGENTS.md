@@ -7,8 +7,7 @@ This repo is a **Chrome MV3 extension** ("Invert IDE Userscripts") built as a pn
 database, or API**. Persistence uses `chrome.storage`. The "app" is the built `dist/` folder
 loaded into Chrome as an unpacked extension.
 
-Toolchain: Node + `pnpm@10.33.0` (see `packageManager`). Dependencies are installed by the
-startup update script (`pnpm install`).
+Toolchain: Node + `pnpm@10.33.0` (see `packageManager`). After checkout, run `pnpm install`.
 
 ### Building (important gotcha)
 
@@ -32,8 +31,8 @@ The root `pnpm test` script points at a non-existent `tests/` dir — ignore it;
 ### End-to-end tests (Playwright)
 
 E2E loads the built extension into Chromium, so you **must build `dist/` first**
-(`e2e/global-setup.ts` asserts `dist/manifest.json` exists). Chrome extensions require a real/new
-headless mode, which the fixtures handle when `HEADLESS=true`.
+(`e2e/global-setup.ts` asserts `dist/manifest.json` exists). If you hit an error suggesting `npm run build`, use the build command from the section above (ts-node ESM loader).
+Chrome extensions require a real/new headless mode, which the fixtures handle when `HEADLESS=true`.
 
 ```bash
 # one-time browser binary install (done in setup): pnpm exec playwright install --with-deps chromium
