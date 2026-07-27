@@ -295,14 +295,10 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
-        const buffer = draftBufferForCodeLanguage(language);
+        const buffer: DraftBuffer =
+          language === "typescript" ? "typescript" : "scss";
 
-        if (
-          !shouldRestoreDirtyOnSaveRejection(
-            draft.lastSaveRequestId[buffer],
-            action.meta.requestId
-          )
-        ) {
+        if (draft.lastSaveRequestId[buffer] !== action.meta.requestId) {
           return;
         }
 
@@ -316,12 +312,7 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
-        if (
-          !shouldRestoreDirtyOnSaveRejection(
-            draft.lastSaveRequestId.typeDefinitions,
-            action.meta.requestId
-          )
-        ) {
+        if (draft.lastSaveRequestId.typeDefinitions !== action.meta.requestId) {
           return;
         }
 
