@@ -1,12 +1,16 @@
 import {
-  CompiledCodeEntry,
   GlobalModule,
   GlobalModules,
   Userscript,
   Userscripts,
 } from "@shared/model";
 import { ChromeSyncStorage, CompiledCodeStorage } from "@shared/storage";
-import { matchesUrlPattern } from "@shared/url-matching";
+import {
+  collectCompiledCodeScriptIds,
+  collectEnabledCdnModuleIds,
+  mergeCompiledCode,
+  selectMatchingScriptsForInjection,
+} from "./injection-plan";
 
 const INLINE_EXECUTION_STATE_KEY = "__INVERT_INLINE_EXECUTION__";
 
@@ -28,28 +32,6 @@ export async function loadRuntimeInjectionState(
   return {
     scriptsMap,
     modulesMap,
-  };
-}
-
-function mergeCompiledCode(
-  script: Userscript,
-  compiledCodeMap: Record<string, CompiledCodeEntry>
-): Userscript {
-  const compiled = compiledCodeMap[script.id];
-
-  if (!compiled) {
-    return script;
-  }
-
-  return {
-    ...script,
-    code: {
-      ...script.code,
-      compiled: {
-        javascript: compiled.javascript || script.code.compiled.javascript,
-        css: compiled.css || script.code.compiled.css,
-      },
-    },
   };
 }
 
@@ -115,39 +97,24 @@ export async function injectMatchingScripts(
     const state = injectionState ?? (await loadRuntimeInjectionState());
     const { scriptsMap } = state;
 
-    const allScripts = Object.values(scriptsMap);
-
     // Filter before merging compiled code to avoid unnecessary object spreading
-    const matchingScripts = allScripts.filter(
-      (script) =>
-        script.enabled &&
-        script.runAt === timing &&
-        matchesUrlPattern(url, script.urlPatterns)
+    const matchingScripts = selectMatchingScriptsForInjection(
+      scriptsMap,
+      url,
+      timing
     );
 
     if (matchingScripts.length === 0) {
       return;
     }
 
-    const scriptIdsToFetch = new Set<string>(matchingScripts.map((s) => s.id));
-    for (const script of matchingScripts) {
-      if (script.sharedScripts?.length > 0) {
-        for (const sharedId of script.sharedScripts) {
-          scriptIdsToFetch.add(sharedId);
-        }
-      }
-    }
-
     const compiledCodeMap = await CompiledCodeStorage.getCompiledCodeForScripts(
-      Array.from(scriptIdsToFetch)
+      collectCompiledCodeScriptIds(matchingScripts)
     );
 
     const resolvedScripts = matchingScripts.map((script) =>
       mergeCompiledCode(script, compiledCodeMap)
     );
-
-    // Build a lookup map for shared script resolution (O(1) vs O(n) per lookup)
-    const scriptById = new Map(allScripts.map((s) => [s.id, s]));
 
     // Phase 1: Inject CDN modules (deduplicated, only fetch modules if needed)
     const needsCdnModules = resolvedScripts.some(
@@ -157,19 +124,13 @@ export async function injectMatchingScripts(
 
     if (needsCdnModules) {
       modulesMap = modulesMap ?? (await ChromeSyncStorage.getAllModules());
-      const injectedModules = new Set<string>();
-
-      for (const script of resolvedScripts) {
-        if (script.globalModules?.length > 0) {
-          for (const moduleId of script.globalModules) {
-            if (!injectedModules.has(moduleId)) {
-              const module = modulesMap[moduleId];
-              if (module?.enabled) {
-                await injectCdnModule(tabId, module);
-                injectedModules.add(moduleId);
-              }
-            }
-          }
+      for (const moduleId of collectEnabledCdnModuleIds(
+        resolvedScripts,
+        modulesMap
+      )) {
+        const module = modulesMap[moduleId];
+        if (module) {
+          await injectCdnModule(tabId, module);
         }
       }
     }
@@ -183,7 +144,7 @@ export async function injectMatchingScripts(
           if (injectedShared.has(sharedId)) {
             continue;
           }
-          const shared = scriptById.get(sharedId);
+          const shared = scriptsMap[sharedId];
 
           if (shared?.shared) {
             const resolvedShared = mergeCompiledCode(shared, compiledCodeMap);
