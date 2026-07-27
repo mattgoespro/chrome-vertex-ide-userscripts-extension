@@ -13,12 +13,14 @@ import { saveEditorCode } from "../code-editor/thunks.code-editor";
 import { commitDraftForSave } from "./actions";
 import {
   bumpDraftRevision,
+  draftBufferForCodeLanguage,
   draftFromScript,
   DraftBuffer,
   EditorDraft,
   initialState,
   isDraftDirty,
   RemoteDraftConflict,
+  shouldRestoreDirtyOnSaveRejection,
 } from "./state.editor-drafts";
 
 const editorDraftsSlice = createSlice({
@@ -275,8 +277,7 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
-        const buffer: DraftBuffer =
-          language === "typescript" ? "typescript" : "scss";
+        const buffer = draftBufferForCodeLanguage(language);
 
         draft[buffer] = action.payload.code;
         draft.dirty[buffer] = false;
@@ -386,5 +387,11 @@ export const selectHasPendingConflicts = createSelector(
 
 export { isDraftDirty, draftFromScript };
 export type { DraftBuffer, EditorDraft, RemoteDraftConflict };
+
+export {
+  draftBufferForCodeLanguage,
+  shouldRestoreDirtyOnSaveRejection,
+} from "./state.editor-drafts";
+
 
 export default editorDraftsSlice.reducer;

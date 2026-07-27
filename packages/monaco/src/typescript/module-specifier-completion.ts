@@ -1,4 +1,15 @@
 import * as monaco from "monaco-editor";
+import {
+  getModuleSpecifierSuggestions,
+  matchScriptsSpecifierPrefix,
+  SharedModuleSpecifierInfo,
+} from "./module-specifier-helpers";
+
+export type { SharedModuleSpecifierInfo } from "./module-specifier-helpers";
+export {
+  getModuleSpecifierSuggestions,
+  matchScriptsSpecifierPrefix,
+} from "./module-specifier-helpers";
 
 /**
  * Completion for `"scripts/<module>/<main|types>"` import specifiers.
@@ -15,14 +26,6 @@ import * as monaco from "monaco-editor";
  * returns and contains no source-code analysis.
  */
 
-export interface SharedModuleSpecifierInfo {
-  moduleName: string;
-  scriptName: string;
-}
-
-const SPECIFIER_PREFIX_PATTERN =
-  /(?:import|export)\s[^\n]*?from\s*["']scripts\/([\w./-]*)$|import\s*\(\s*["']scripts\/([\w./-]*)$/;
-
 export function registerModuleSpecifierCompletion(
   getSharedModules: () => SharedModuleSpecifierInfo[]
 ): monaco.IDisposable {
@@ -36,13 +39,12 @@ export function registerModuleSpecifierCompletion(
         endColumn: position.column,
       });
 
-      const match = textUntilPosition.match(SPECIFIER_PREFIX_PATTERN);
+      const typedPath = matchScriptsSpecifierPrefix(textUntilPosition);
 
-      if (!match) {
+      if (typedPath === null) {
         return { suggestions: [] };
       }
 
-      const typedPath = match[1] ?? match[2] ?? "";
       const word = model.getWordUntilPosition(position);
       const replaceRange = new monaco.Range(
         position.lineNumber,
@@ -51,41 +53,22 @@ export function registerModuleSpecifierCompletion(
         position.column
       );
 
-      // After a complete module segment, offer the entry points.
-      const segmentEnd = typedPath.indexOf("/");
-
-      if (segmentEnd !== -1) {
-        const moduleName = typedPath.slice(0, segmentEnd);
-        const known = getSharedModules().some(
-          (info) => info.moduleName === moduleName
-        );
-
-        if (!known) {
-          return { suggestions: [] };
-        }
-
-        return {
-          suggestions: (["main", "types"] as const).map((entry) => ({
-            label: entry,
-            kind: monaco.languages.CompletionItemKind.Module,
-            insertText: entry,
-            range: replaceRange,
-            detail: `scripts/${moduleName}/${entry}`,
-          })),
-        };
-      }
+      const suggestions = getModuleSpecifierSuggestions(
+        typedPath,
+        getSharedModules()
+      );
 
       return {
-        suggestions: getSharedModules().flatMap((info) =>
-          (["main", "types"] as const).map((entry) => ({
-            label: `${info.moduleName}/${entry}`,
-            kind: monaco.languages.CompletionItemKind.Module,
-            insertText: `${info.moduleName}/${entry}`,
-            range: replaceRange,
-            detail: info.scriptName,
-            documentation: `Shared script: ${info.scriptName}`,
-          }))
-        ),
+        suggestions: suggestions.map((suggestion) => ({
+          label: suggestion.label,
+          kind: monaco.languages.CompletionItemKind.Module,
+          insertText: suggestion.insertText,
+          range: replaceRange,
+          detail: suggestion.detail,
+          ...(suggestion.kind === "module-entry"
+            ? { documentation: suggestion.documentation }
+            : {}),
+        })),
       };
     },
   });
