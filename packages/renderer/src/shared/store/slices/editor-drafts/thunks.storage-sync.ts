@@ -2,8 +2,7 @@ import { createAsyncThunk } from "@reduxjs/toolkit/react";
 import { Userscript } from "@shared/model";
 import { ChromeSyncStorage, CompiledCodeStorage } from "@shared/storage";
 import type { RootState } from "../../store";
-import { detectDraftConflict } from "./helpers";
-import { isDraftDirty } from "./state.editor-drafts";
+import { decideStorageSyncAction } from "./storage-sync-decision";
 import {
   enqueueConflict,
   removeDraft,
@@ -82,37 +81,34 @@ export const refreshScriptsFromStorage = createAsyncThunk<
     for (const scriptId of targetIds) {
       const remoteScript = scriptsMap[scriptId];
       const localDraft = getState().editorDrafts.drafts[scriptId];
+      const hydrated = remoteScript
+        ? mergeCompiledCode(
+            normalizeUserscript(remoteScript),
+            compiledCodeMap[scriptId]
+          )
+        : undefined;
 
-      if (!remoteScript) {
-        if (localDraft && isDraftDirty(localDraft)) {
-          continue;
-        }
-
-        dispatch(removeDraft(scriptId));
-        continue;
-      }
-
-      const hydrated = mergeCompiledCode(
-        normalizeUserscript(remoteScript),
-        compiledCodeMap[scriptId]
+      const decision = decideStorageSyncAction(
+        scriptId,
+        localDraft,
+        hydrated
       );
 
-      if (!localDraft) {
-        dispatch(syncDraftFromRemoteScript(hydrated));
-        syncedScripts.push(hydrated);
-        continue;
+      switch (decision.action) {
+        case "keep-dirty-orphan":
+          break;
+        case "remove":
+          dispatch(removeDraft(scriptId));
+          break;
+        case "conflict":
+          dispatch(enqueueConflict(decision.conflict));
+          conflictIds.push(scriptId);
+          break;
+        case "sync":
+          dispatch(syncDraftFromRemoteScript(decision.script));
+          syncedScripts.push(decision.script);
+          break;
       }
-
-      const conflict = detectDraftConflict(scriptId, localDraft, hydrated);
-
-      if (conflict) {
-        dispatch(enqueueConflict(conflict));
-        conflictIds.push(scriptId);
-        continue;
-      }
-
-      dispatch(syncDraftFromRemoteScript(hydrated));
-      syncedScripts.push(hydrated);
     }
 
     return { syncedScripts, conflictIds };
