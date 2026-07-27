@@ -12,16 +12,7 @@ import {
 import { saveEditorCode } from "../code-editor/thunks.code-editor";
 import { commitDraftForSave } from "./actions";
 import {
-  applyCommitDraftForSave,
-  applyFlushModelToDraft,
-  applyMarkDraftClean,
-  applyRemoteScriptToDraft,
-  applyTakeRemoteScript,
-  applyUpdateDraftBuffer,
-  buildDraftsPreservingDirty,
-  clearPendingConflict,
-} from "./draft-reducer-ops";
-import {
+  bumpDraftRevision,
   draftBufferForCodeLanguage,
   draftFromScript,
   DraftBuffer,
@@ -39,10 +30,19 @@ const editorDraftsSlice = createSlice({
     initDraftsFromScripts: {
       prepare: (scripts: Userscript[]) => ({ payload: scripts }),
       reducer: (state, action: PayloadAction<Userscript[]>) => {
-        state.drafts = buildDraftsPreservingDirty(
-          state.drafts,
-          action.payload
-        );
+        const nextDrafts: Record<string, EditorDraft> = {};
+
+        for (const script of action.payload) {
+          const existing = state.drafts[script.id];
+
+          if (existing && isDraftDirty(existing)) {
+            nextDrafts[script.id] = existing;
+          } else {
+            nextDrafts[script.id] = draftFromScript(script);
+          }
+        }
+
+        state.drafts = nextDrafts;
       },
     },
     updateDraftBuffer: {
@@ -60,15 +60,19 @@ const editorDraftsSlice = createSlice({
         }>
       ) => {
         const { scriptId, buffer, code } = action.payload;
-        const next = applyUpdateDraftBuffer(
-          state.drafts[scriptId],
-          buffer,
-          code
-        );
+        const draft = state.drafts[scriptId];
 
-        if (next) {
-          state.drafts[scriptId] = next;
+        if (!draft) {
+          return;
         }
+
+        if (draft[buffer] === code) {
+          return;
+        }
+
+        draft[buffer] = code;
+        draft.dirty[buffer] = true;
+        draft.revision += 1;
       },
     },
     markDraftClean: {
@@ -80,36 +84,37 @@ const editorDraftsSlice = createSlice({
         action: PayloadAction<{ scriptId: string; buffer: DraftBuffer }>
       ) => {
         const { scriptId, buffer } = action.payload;
-        const next = applyMarkDraftClean(state.drafts[scriptId], buffer);
+        const draft = state.drafts[scriptId];
 
-        if (next) {
-          state.drafts[scriptId] = next;
+        if (!draft) {
+          return;
         }
+
+        draft.dirty[buffer] = false;
+        draft.revision += 1;
       },
     },
     applyRemoteScript: {
       prepare: (script: Userscript) => ({ payload: script }),
       reducer: (state, action: PayloadAction<Userscript>) => {
         const script = action.payload;
-        const result = applyTakeRemoteScript(
-          state.drafts[script.id],
-          script,
-          state.pendingConflicts
-        );
+        const existing = state.drafts[script.id];
 
-        state.drafts[script.id] = result.draft;
-        state.pendingConflicts = result.pendingConflicts;
+        state.drafts[script.id] = existing
+          ? bumpDraftRevision(existing, script)
+          : draftFromScript(script);
+        delete state.pendingConflicts[script.id];
       },
     },
     syncDraftFromRemoteScript: {
       prepare: (script: Userscript) => ({ payload: script }),
       reducer: (state, action: PayloadAction<Userscript>) => {
         const script = action.payload;
+        const existing = state.drafts[script.id];
 
-        state.drafts[script.id] = applyRemoteScriptToDraft(
-          state.drafts[script.id],
-          script
-        );
+        state.drafts[script.id] = existing
+          ? bumpDraftRevision(existing, script)
+          : draftFromScript(script);
       },
     },
     removeDraft: {
@@ -128,10 +133,7 @@ const editorDraftsSlice = createSlice({
     resolveConflictKeepLocal: {
       prepare: (scriptId: string) => ({ payload: scriptId }),
       reducer: (state, action: PayloadAction<string>) => {
-        state.pendingConflicts = clearPendingConflict(
-          state.pendingConflicts,
-          action.payload
-        );
+        delete state.pendingConflicts[action.payload];
       },
     },
     resolveAllConflictsKeepLocal: (state) => {
@@ -141,28 +143,24 @@ const editorDraftsSlice = createSlice({
       prepare: (script: Userscript) => ({ payload: script }),
       reducer: (state, action: PayloadAction<Userscript>) => {
         const script = action.payload;
-        const result = applyTakeRemoteScript(
-          state.drafts[script.id],
-          script,
-          state.pendingConflicts
-        );
+        const existing = state.drafts[script.id];
 
-        state.drafts[script.id] = result.draft;
-        state.pendingConflicts = result.pendingConflicts;
+        state.drafts[script.id] = existing
+          ? bumpDraftRevision(existing, script)
+          : draftFromScript(script);
+        delete state.pendingConflicts[script.id];
       },
     },
     resolveAllConflictsTakeRemote: {
       prepare: (scripts: Userscript[]) => ({ payload: scripts }),
       reducer: (state, action: PayloadAction<Userscript[]>) => {
         for (const script of action.payload) {
-          const result = applyTakeRemoteScript(
-            state.drafts[script.id],
-            script,
-            state.pendingConflicts
-          );
+          const existing = state.drafts[script.id];
 
-          state.drafts[script.id] = result.draft;
-          state.pendingConflicts = result.pendingConflicts;
+          state.drafts[script.id] = existing
+            ? bumpDraftRevision(existing, script)
+            : draftFromScript(script);
+          delete state.pendingConflicts[script.id];
         }
       },
     },
@@ -181,14 +179,17 @@ const editorDraftsSlice = createSlice({
         }>
       ) => {
         const { scriptId, buffer, code } = action.payload;
-        const next = applyFlushModelToDraft(
-          state.drafts[scriptId],
-          buffer,
-          code
-        );
+        const draft = state.drafts[scriptId];
 
-        if (next) {
-          state.drafts[scriptId] = next;
+        if (!draft || draft[buffer] === code) {
+          return;
+        }
+
+        draft[buffer] = code;
+
+        if (!draft.dirty[buffer]) {
+          draft.dirty[buffer] = true;
+          draft.revision += 1;
         }
       },
     },
@@ -197,23 +198,38 @@ const editorDraftsSlice = createSlice({
     builder
       .addCase(commitDraftForSave, (state, action) => {
         const { scriptId, buffer, code, saveRequestId } = action.payload;
-        const next = applyCommitDraftForSave(
-          state.drafts[scriptId],
-          buffer,
-          code,
-          saveRequestId
-        );
+        const draft = state.drafts[scriptId];
 
-        if (next) {
-          state.drafts[scriptId] = next;
+        if (!draft) {
+          return;
         }
+
+        draft.lastSaveRequestId[buffer] = saveRequestId;
+
+        if (draft[buffer] === code && !draft.dirty[buffer]) {
+          return;
+        }
+
+        draft[buffer] = code;
+        draft.dirty[buffer] = false;
+        draft.revision += 1;
       })
       .addCase(loadUserscripts.fulfilled, (state, action) => {
-        state.drafts = buildDraftsPreservingDirty(
-          state.drafts,
-          action.payload
-        );
-      })      .addCase(createUserscript.fulfilled, (state, action) => {
+        const nextDrafts: Record<string, EditorDraft> = {};
+
+        for (const script of action.payload) {
+          const existing = state.drafts[script.id];
+
+          if (existing && isDraftDirty(existing)) {
+            nextDrafts[script.id] = existing;
+          } else {
+            nextDrafts[script.id] = draftFromScript(script);
+          }
+        }
+
+        state.drafts = nextDrafts;
+      })
+      .addCase(createUserscript.fulfilled, (state, action) => {
         state.drafts[action.payload.id] = draftFromScript(action.payload);
       })
       .addCase(deleteUserscript.fulfilled, (state, action) => {
@@ -329,17 +345,6 @@ export {
   extractUserscriptMetadataUpdates,
   getDraftOrSavedSource,
 } from "./helpers";
-
-export {
-  applyCommitDraftForSave,
-  applyFlushModelToDraft,
-  applyMarkDraftClean,
-  applyRemoteScriptToDraft,
-  applyTakeRemoteScript,
-  applyUpdateDraftBuffer,
-  buildDraftsPreservingDirty,
-  clearPendingConflict,
-} from "./draft-reducer-ops";
 
 export const selectDraftForScript =
   (scriptId: string) =>
