@@ -5,32 +5,11 @@ import {
   Userscript,
   GlobalModule,
 } from "../model";
-
-type StoredUserscriptPayload = {
-  name: string;
-  enabled?: true;
-  status?: Userscript["status"];
-  error?: true;
-  shared?: true;
-  moduleName?: string;
-  sharedScripts?: string[];
-  globalModules?: string[];
-  typeDefinitions?: string;
-  code?: {
-    source?: {
-      typescript?: string;
-      scss?: string;
-    };
-    compiled?: {
-      javascript?: string;
-      css?: string;
-    };
-  };
-  urlPatterns?: string[];
-  runAt?: Userscript["runAt"];
-  createdAt: number;
-  updatedAt: number;
-};
+import {
+  hydrateUserscript,
+  serializeUserscript,
+  type StoredUserscriptPayload,
+} from "./userscript-payload";
 
 type StoredUserscriptEncoding = "gzip-base64" | "utf8-base64";
 
@@ -251,7 +230,7 @@ export class ChromeSyncStorage {
     manifest: StoredUserscriptManifest;
     chunkEntries: Record<string, string>;
   }> {
-    const payload = JSON.stringify(this.serializeUserscript(script));
+    const payload = JSON.stringify(serializeUserscript(script));
     const encoded = await this.encodePayload(payload);
 
     if (encoded.data.length <= USERSCRIPT_INLINE_DATA_LIMIT) {
@@ -285,106 +264,6 @@ export class ChromeSyncStorage {
     };
   }
 
-  private static serializeUserscript(
-    script: Userscript
-  ): StoredUserscriptPayload {
-    const payload: StoredUserscriptPayload = {
-      name: script.name,
-      createdAt: script.createdAt,
-      updatedAt: script.updatedAt,
-    };
-
-    if (script.enabled) {
-      payload.enabled = true;
-    }
-
-    if (script.status === "modified") {
-      payload.status = script.status;
-    }
-
-    if (script.error) {
-      payload.error = true;
-    }
-
-    if (script.shared) {
-      payload.shared = true;
-    }
-
-    if (script.moduleName.trim().length > 0) {
-      payload.moduleName = script.moduleName;
-    }
-
-    if (script.sharedScripts.length > 0) {
-      payload.sharedScripts = [...script.sharedScripts];
-    }
-
-    if (script.globalModules.length > 0) {
-      payload.globalModules = [...script.globalModules];
-    }
-
-    if (script.typeDefinitions.length > 0) {
-      payload.typeDefinitions = script.typeDefinitions;
-    }
-
-    const typescriptSource = script.code.source.typescript;
-    const scssSource = script.code.source.scss;
-
-    if (typescriptSource.length > 0 || scssSource.length > 0) {
-      payload.code = {
-        source: {
-          ...(typescriptSource.length > 0
-            ? { typescript: typescriptSource }
-            : {}),
-          ...(scssSource.length > 0 ? { scss: scssSource } : {}),
-        },
-      };
-    }
-
-    if (script.urlPatterns.length > 0) {
-      payload.urlPatterns = [...script.urlPatterns];
-    }
-
-    if (script.runAt === "afterPageLoad") {
-      payload.runAt = script.runAt;
-    }
-
-    return payload;
-  }
-
-  private static hydrateUserscript(
-    scriptId: string,
-    payload: Partial<Userscript> | StoredUserscriptPayload
-  ): Userscript {
-    const fallbackTimestamp = Date.now();
-
-    return {
-      id: scriptId,
-      name: payload.name ?? "Untitled Script",
-      enabled: payload.enabled ?? false,
-      status: payload.status ?? "saved",
-      error: payload.error,
-      shared: payload.shared ?? false,
-      moduleName: payload.moduleName ?? "",
-      sharedScripts: payload.sharedScripts ?? [],
-      globalModules: payload.globalModules ?? [],
-      typeDefinitions: payload.typeDefinitions ?? "",
-      code: {
-        source: {
-          typescript: payload.code?.source?.typescript ?? "",
-          scss: payload.code?.source?.scss ?? "",
-        },
-        compiled: {
-          javascript: payload.code?.compiled?.javascript ?? "",
-          css: payload.code?.compiled?.css ?? "",
-        },
-      },
-      urlPatterns: payload.urlPatterns ?? [],
-      runAt: payload.runAt ?? "beforePageLoad",
-      createdAt: payload.createdAt ?? fallbackTimestamp,
-      updatedAt: payload.updatedAt ?? payload.createdAt ?? fallbackTimestamp,
-    };
-  }
-
   private static async readUserscriptFromStoredValue(
     scriptId: string,
     manifest: StoredUserscriptManifest,
@@ -396,7 +275,7 @@ export class ChromeSyncStorage {
       storageValues
     );
 
-    return this.hydrateUserscript(scriptId, payload);
+    return hydrateUserscript(scriptId, payload);
   }
 
   private static async readStoredUserscriptPayload(
