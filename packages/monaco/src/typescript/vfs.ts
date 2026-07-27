@@ -1,5 +1,12 @@
-import { getScriptModulePath, UserscriptSourceLanguage } from "@shared/model";
+import { UserscriptSourceLanguage } from "@shared/model";
 import * as monaco from "monaco-editor";
+
+export {
+  buildModelUri,
+  buildScriptFileUri,
+  buildScriptModelId,
+  type ScriptEditorKind,
+} from "./model-uris";
 
 /**
  * The workspace virtual file system.
@@ -17,17 +24,6 @@ import * as monaco from "monaco-editor";
  * be disposed exactly, without substring matching.
  */
 
-/**
- * Map source language identifiers to file extensions recognised by
- * the Monaco TypeScript worker's module resolution.
- */
-const LANGUAGE_EXTENSIONS: Record<string, string> = {
-  typescript: "ts",
-  scss: "scss",
-};
-
-export type ScriptEditorKind = "main" | "types" | "styles";
-
 export interface WorkspaceFile {
   uri: string;
   language: UserscriptSourceLanguage;
@@ -38,37 +34,6 @@ export interface WorkspaceFile {
    * `onDidChangeContent`). Detached models are always updated.
    */
   preserveAttachedBuffer?: boolean;
-}
-
-export function buildScriptModelId(
-  script: { id: string; moduleName?: string },
-  editor: ScriptEditorKind
-): string {
-  const modulePath = getScriptModulePath(script);
-
-  if (editor === "types") {
-    return `scripts/${modulePath}/types.d`;
-  }
-
-  return `scripts/${modulePath}/${editor}`;
-}
-
-export function buildModelUri(
-  modelId: string,
-  language: UserscriptSourceLanguage
-): string {
-  const ext = LANGUAGE_EXTENSIONS[language] ?? language;
-  return `file:///${modelId}.${ext}`;
-}
-
-export function buildScriptFileUri(
-  script: { id: string; moduleName?: string },
-  editor: ScriptEditorKind
-): string {
-  return buildModelUri(
-    buildScriptModelId(script, editor),
-    editor === "styles" ? "scss" : "typescript"
-  );
 }
 
 // ── Model registry ────────────────────────────────────────────────────────────

@@ -67,3 +67,24 @@ export function bumpDraftRevision(
     revision: existing.revision + 1,
   };
 }
+
+/**
+ * Maps a source-language save arg to the draft buffer it mutates.
+ */
+export function draftBufferForCodeLanguage(
+  language: "typescript" | "scss"
+): DraftBuffer {
+  return language === "typescript" ? "typescript" : "scss";
+}
+
+/**
+ * Whether a rejected save should restore dirty for a buffer.
+ * Only the latest committed in-flight save for that buffer may restore dirty;
+ * a superseded rejection must not flip the flag after a newer save committed.
+ */
+export function shouldRestoreDirtyOnSaveRejection(
+  lastSaveRequestId: string | undefined,
+  rejectedRequestId: string
+): boolean {
+  return lastSaveRequestId === rejectedRequestId;
+}

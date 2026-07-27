@@ -13,12 +13,14 @@ import { saveEditorCode } from "../code-editor/thunks.code-editor";
 import { commitDraftForSave } from "./actions";
 import {
   bumpDraftRevision,
+  draftBufferForCodeLanguage,
   draftFromScript,
   DraftBuffer,
   EditorDraft,
   initialState,
   isDraftDirty,
   RemoteDraftConflict,
+  shouldRestoreDirtyOnSaveRejection,
 } from "./state.editor-drafts";
 
 const editorDraftsSlice = createSlice({
@@ -275,8 +277,7 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
-        const buffer: DraftBuffer =
-          language === "typescript" ? "typescript" : "scss";
+        const buffer = draftBufferForCodeLanguage(language);
 
         draft[buffer] = action.payload.code;
         draft.dirty[buffer] = false;
@@ -294,10 +295,14 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
-        const buffer: DraftBuffer =
-          language === "typescript" ? "typescript" : "scss";
+        const buffer = draftBufferForCodeLanguage(language);
 
-        if (draft.lastSaveRequestId[buffer] !== action.meta.requestId) {
+        if (
+          !shouldRestoreDirtyOnSaveRejection(
+            draft.lastSaveRequestId[buffer],
+            action.meta.requestId
+          )
+        ) {
           return;
         }
 
@@ -311,7 +316,12 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
-        if (draft.lastSaveRequestId.typeDefinitions !== action.meta.requestId) {
+        if (
+          !shouldRestoreDirtyOnSaveRejection(
+            draft.lastSaveRequestId.typeDefinitions,
+            action.meta.requestId
+          )
+        ) {
           return;
         }
 
@@ -386,5 +396,11 @@ export const selectHasPendingConflicts = createSelector(
 
 export { isDraftDirty, draftFromScript };
 export type { DraftBuffer, EditorDraft, RemoteDraftConflict };
+
+export {
+  draftBufferForCodeLanguage,
+  shouldRestoreDirtyOnSaveRejection,
+} from "./state.editor-drafts";
+
 
 export default editorDraftsSlice.reducer;
