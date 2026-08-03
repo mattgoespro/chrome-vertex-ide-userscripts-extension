@@ -1,16 +1,19 @@
 import { IconButton } from "@/shared/components/icon-button/IconButton";
 import { ScriptList } from "@/shared/components/script-list/ScriptList";
 import { Typography } from "@/shared/components/typography/Typography";
-import { useAppDispatch, useAppSelector } from "@/shared/store/hooks";
-import { selectAllUserscripts } from "@/shared/store/slices/userscripts";
-import { loadUserscripts } from "@/shared/store/slices/userscripts/thunks.userscripts";
+import { selectAllUserscripts } from "@/shared/store/slices/userscripts/selectors";
+import { loadUserscripts } from "@/shared/store/slices/userscripts/thunks.load";
 import { matchesUrlPattern } from "@shared/url-matching";
 import { ExternalLinkIcon } from "lucide-react";
 import { useEffect, useMemo, useState } from "react";
+import { useDispatch, useSelector } from "react-redux";
+import type { PopupDispatch, PopupRootState } from "./popup-store";
 
 export function Popup() {
-  const dispatch = useAppDispatch();
-  const scripts = useAppSelector(selectAllUserscripts);
+  const dispatch = useDispatch<PopupDispatch>();
+  const scripts = useSelector((state: PopupRootState) =>
+    selectAllUserscripts(state)
+  );
   const [activeTabUrl, setActiveTabUrl] = useState<string | null>(null);
   const [isLoading, setIsLoading] = useState(true);
 

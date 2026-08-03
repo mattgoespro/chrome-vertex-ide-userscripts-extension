@@ -33,7 +33,7 @@ export function ScriptMetadata({ script }: ScriptMetadataProps) {
   }, []);
 
   const onUpdateScriptMeta = async (updates: Partial<Userscript>) => {
-    dispatch(updateUserscript({ id: script.id, updates }));
+    await dispatch(updateUserscript({ id: script.id, updates })).unwrap();
   };
 
   const onModuleNameChange = (value: string) => {
@@ -106,6 +106,7 @@ export function ScriptMetadata({ script }: ScriptMetadataProps) {
           selectedModuleIds={script.globalModules ?? []}
           onModuleNameChange={onModuleNameChange}
           onToggleModule={onToggleModule}
+          onRunAtChange={(runAt) => onUpdateScriptMeta({ runAt })}
           onDelete={onDeleteScript}
         />
       </div>
@@ -113,9 +114,6 @@ export function ScriptMetadata({ script }: ScriptMetadataProps) {
         <UrlPatternTester
           patterns={script.urlPatterns ?? []}
           onClose={() => setShowUrlTester(false)}
-          onPatternsChange={(urlPatterns) =>
-            onUpdateScriptMeta({ urlPatterns })
-          }
         />
       )}
     </>

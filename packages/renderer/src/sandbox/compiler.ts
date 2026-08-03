@@ -3,10 +3,7 @@ import {
   UserscriptCompileResult,
   getScriptModulePath,
 } from "@shared/model";
-import {
-  CompiledOutputBuildOptions,
-  createCompiledCodeBuildMetadata,
-} from "./compiled-build-metadata";
+import { CompiledOutputBuildOptions } from "./compiled-build-metadata";
 
 export {
   createCompiledCodeBuildMetadata,
@@ -217,18 +214,6 @@ export async function buildUserscriptStylesheet(
   return SassCompiler.compile(sourceCode, {
     minify: options.minifyCompiledOutput,
   });
-}
-
-export function buildCompiledCodeEntry(
-  javascript: string,
-  css: string,
-  options: CompiledOutputBuildOptions
-): CompiledCodeEntry {
-  return {
-    javascript,
-    css,
-    build: createCompiledCodeBuildMetadata(options),
-  };
 }
 
 interface SassCompileRequest {

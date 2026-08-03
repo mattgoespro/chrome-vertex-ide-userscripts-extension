@@ -29,6 +29,11 @@ interface StorageFixtures {
 export const test = extensionTest.extend<StorageFixtures>({
   clearStorage: async ({}, use) => {
     const clear = async (page: Page) => {
+      // The already-open options page may still have a debounced UI-state save
+      // pending from its initial hydration. Let that settle before test setup
+      // clears storage, otherwise a reload can rewrite stale globalState.
+      await page.waitForTimeout(600);
+
       await page.evaluate(async () => {
         await Promise.all([
           chrome.storage.sync.clear(),
@@ -45,6 +50,10 @@ export const test = extensionTest.extend<StorageFixtures>({
       syncData: Record<string, unknown>,
       localData?: Record<string, unknown>
     ) => {
+      // See clearStorage above: ensure the live page has finished any pending
+      // debounced writes before test setup seeds a replacement storage state.
+      await page.waitForTimeout(600);
+
       const finalSyncData = buildUserscriptSyncEntries(syncData);
 
       await page.evaluate(

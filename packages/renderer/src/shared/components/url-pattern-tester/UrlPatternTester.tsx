@@ -2,7 +2,7 @@ import { Button } from "@/shared/components/button/Button";
 import { Input } from "@/shared/components/input/Input";
 import { Typography } from "@/shared/components/typography/Typography";
 import { matchesUrlPattern } from "@shared/url-matching";
-import { AlertCircle, CheckCircle2, Globe, History, XIcon } from "lucide-react";
+import { AlertCircle, CheckCircle2, Globe, XIcon } from "lucide-react";
 import { useEffect, useState } from "react";
 import clsx from "clsx";
 import { IconButton } from "../icon-button/IconButton";
@@ -10,7 +10,6 @@ import { IconButton } from "../icon-button/IconButton";
 type UrlPatternTesterProps = {
   patterns: string[];
   onClose: () => void;
-  onPatternsChange: (patterns: string[]) => void;
 };
 
 type TestResult = {
@@ -23,9 +22,8 @@ export function UrlPatternTester({ patterns, onClose }: UrlPatternTesterProps) {
   const [testUrl, setTestUrl] = useState("");
   const [testResults, setTestResults] = useState<TestResult[]>([]);
   const [openTabUrls, setOpenTabUrls] = useState<string[]>([]);
-  const [recentHistoryUrls, setRecentHistoryUrls] = useState<string[]>([]);
+  const [tabsError, setTabsError] = useState<string | null>(null);
 
-  // Test the current URL against all patterns
   useEffect(() => {
     if (!testUrl) {
       setTestResults([]);
@@ -48,6 +46,7 @@ export function UrlPatternTester({ patterns, onClose }: UrlPatternTesterProps) {
 
   const handleTestOpenTabs = async () => {
     try {
+      setTabsError(null);
       const tabs = await chrome.tabs.query({});
       const urls = tabs.map((tab) => tab.url).filter(Boolean) as string[];
       setOpenTabUrls(urls);
@@ -63,39 +62,14 @@ export function UrlPatternTester({ patterns, onClose }: UrlPatternTesterProps) {
       setTestResults(results);
     } catch (error) {
       console.error("Failed to query tabs:", error);
-    }
-  };
-
-  const handleTestHistory = async () => {
-    try {
-      const historyItems = await chrome.history.search({
-        text: "",
-        maxResults: 50,
-        startTime: Date.now() - 7 * 24 * 60 * 60 * 1000, // Last 7 days
-      });
-      const urls = historyItems
-        .map((item) => item.url)
-        .filter(Boolean) as string[];
-      setRecentHistoryUrls(urls);
-
-      const results: TestResult[] = urls.map((url) => {
-        const matches = matchesUrlPattern(url, patterns);
-        const matchedPattern = patterns.find((pattern) =>
-          matchesUrlPattern(url, [pattern])
-        );
-        return { url, matches, matchedPattern };
-      });
-
-      setTestResults(results);
-    } catch (error) {
-      console.error("Failed to query history:", error);
+      setTabsError("Could not read open tabs.");
+      setTestResults([]);
     }
   };
 
   return (
     <div className="backdrop-blur-sm fixed inset-0 z-1000 flex animate-fade-in items-center justify-center bg-[rgba(0,0,0,0.6)]">
       <div className="max-w-3xl shadow-2xl flex max-h-[90vh] w-full flex-col gap-md overflow-hidden rounded-default border border-border bg-surface-raised p-lg">
-        {/* Header */}
         <div className="flex items-center justify-between">
           <div className="flex items-center gap-sm">
             <Globe className="h-5 w-5 text-accent" />
@@ -103,7 +77,6 @@ export function UrlPatternTester({ patterns, onClose }: UrlPatternTesterProps) {
           </div>
           <IconButton icon={XIcon} onClick={onClose} />
         </div>
-        {/* Test URL Input */}
         <div className="flex flex-col gap-xs">
           <Typography
             variant="caption"
@@ -118,18 +91,20 @@ export function UrlPatternTester({ patterns, onClose }: UrlPatternTesterProps) {
             autoFocus
           />
         </div>
-        {/* Action Buttons */}
-        <div className="flex gap-sm">
-          <Button variant="secondary" onClick={handleTestOpenTabs}>
-            <Globe className="h-4 w-4" />
-            Test Open Tabs ({openTabUrls.length})
-          </Button>
-          <Button variant="secondary" onClick={handleTestHistory}>
-            <History className="h-4 w-4" />
-            Test Recent History ({recentHistoryUrls.length})
-          </Button>
+        <div className="flex flex-col gap-xs">
+          <div className="flex gap-sm">
+            <Button variant="secondary" onClick={handleTestOpenTabs}>
+              <Globe className="h-4 w-4" />
+              Test Open Tabs
+              {openTabUrls.length > 0 ? ` (${openTabUrls.length})` : ""}
+            </Button>
+          </div>
+          {tabsError && (
+            <Typography variant="caption" className="text-error-accent">
+              {tabsError}
+            </Typography>
+          )}
         </div>
-        {/* Current Patterns */}
         <div className="flex flex-col gap-xs">
           <Typography
             variant="caption"
@@ -154,7 +129,6 @@ export function UrlPatternTester({ patterns, onClose }: UrlPatternTesterProps) {
             )}
           </div>
         </div>
-        {/* Test Results */}
         {testResults.length > 0 && (
           <div className="flex min-h-0 flex-1 flex-col gap-xs overflow-hidden">
             <Typography

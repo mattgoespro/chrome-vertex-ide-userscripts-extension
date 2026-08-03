@@ -55,18 +55,26 @@ export const extensionTest = test.extend<
       await use(context);
       await context.close();
     },
-    { scope: "worker" },
+    { scope: "test" },
   ],
   extensionId: [
     async ({ extensionContext }, use) => {
-      // Set up the listener BEFORE checking serviceWorkers() to avoid a race
-      // condition where the SW fires during launchPersistentContext setup and
-      // the event is already gone by the time we call waitForEvent.
-      const swPromise = extensionContext.waitForEvent("serviceworker", {
-        timeout: 30_000,
-      });
-      const existing = extensionContext.serviceWorkers()[0];
-      const serviceWorker = existing ?? (await swPromise);
+      // Prefer an already-registered SW. Avoid leaving a dangling waitForEvent
+      // (it rejects when the worker context closes and fails the run).
+      let serviceWorker = extensionContext.serviceWorkers()[0];
+
+      if (!serviceWorker) {
+        try {
+          serviceWorker = await extensionContext.waitForEvent("serviceworker", {
+            timeout: 30_000,
+          });
+        } catch (error) {
+          serviceWorker = extensionContext.serviceWorkers()[0];
+          if (!serviceWorker) {
+            throw error;
+          }
+        }
+      }
 
       const match = serviceWorker.url().match(/chrome-extension:\/\/([^/]+)/);
 
@@ -78,7 +86,7 @@ export const extensionTest = test.extend<
 
       await use(match[1]);
     },
-    { scope: "worker" },
+    { scope: "test" },
   ],
   optionsPage: async ({ extensionContext, extensionId }, use) => {
     const page = await extensionContext.newPage();

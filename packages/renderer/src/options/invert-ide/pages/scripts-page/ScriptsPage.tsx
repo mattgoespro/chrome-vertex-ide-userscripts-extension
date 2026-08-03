@@ -13,9 +13,8 @@ import {
   stringifyUserscriptsTransferFile,
   UserscriptsTransferFile,
 } from "@/shared/store/slices/userscripts/transfer.userscripts";
-import { useGlobalState } from "@/options/invert-ide/contexts/global-state.context";
 import { LoaderCircleIcon, PlusIcon } from "lucide-react";
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useState } from "react";
 import { Group, Panel } from "react-resizable-panels";
 import { ScriptEditor } from "./script-editor/ScriptEditor";
 import { ScriptList } from "@/shared/components/script-list/ScriptList";
@@ -23,6 +22,10 @@ import {
   createUserscript,
   importUserscripts,
 } from "@/shared/store/slices/userscripts/thunks.userscripts";
+import {
+  selectPanelSizes,
+  updatePanelSizes,
+} from "@/shared/store/slices/ui";
 import { ImportUserscriptsDialog } from "./import-userscripts-dialog/ImportUserscriptsDialog";
 import { ScriptsActionsMenu } from "./scripts-actions-menu/ScriptsActionsMenu";
 
@@ -37,7 +40,7 @@ export function ScriptsPage() {
   const selectedScript = useAppSelector(
     (state) => state.userscripts.currentUserscript
   );
-  const { globalState, updateGlobalState, updatePanelSizes } = useGlobalState();
+  const panelSizes = useAppSelector(selectPanelSizes);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
 
@@ -104,27 +107,8 @@ export function ScriptsPage() {
     [dispatch, toast]
   );
 
-  // On first load, restore the previously selected script from UI state.
-  useEffect(() => {
-    if (Object.keys(scripts).length === 0) {
-      return;
-    }
-
-    if (selectedScript != null) {
-      return;
-    }
-
-    const restoredId = globalState.selectedScriptId;
-    const target =
-      restoredId && scripts[restoredId]
-        ? restoredId
-        : Object.values(scripts)[0].id;
-    dispatch(setCurrentUserscript(target));
-  }, [scripts]);
-
   const onScriptSelected = (scriptId: string) => {
     dispatch(setCurrentUserscript(scriptId));
-    updateGlobalState({ selectedScriptId: scriptId });
   };
 
   return (
@@ -133,13 +117,13 @@ export function ScriptsPage() {
       id="scripts-page-panels"
       className="h-full min-w-0 flex-1 overflow-hidden"
       defaultLayout={{
-        "scripts-sidebar": globalState.panelSizes.scriptListSidebarWidth,
-        "scripts-editor": 100 - globalState.panelSizes.scriptListSidebarWidth,
+        "scripts-sidebar": panelSizes.scriptListSidebarWidth,
+        "scripts-editor": 100 - panelSizes.scriptListSidebarWidth,
       }}
       onLayoutChanged={(layout) => {
         const sidebarWidth = layout["scripts-sidebar"];
         if (sidebarWidth != null) {
-          updatePanelSizes({ scriptListSidebarWidth: sidebarWidth });
+          dispatch(updatePanelSizes({ scriptListSidebarWidth: sidebarWidth }));
         }
       }}
     >

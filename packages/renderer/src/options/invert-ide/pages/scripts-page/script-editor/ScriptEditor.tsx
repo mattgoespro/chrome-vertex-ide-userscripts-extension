@@ -15,12 +15,18 @@ import {
   selectMonacoReady,
 } from "@/shared/store/slices/code-editor";
 import {
+  ensureDraft,
   selectDraftForScript,
   updateDraftBuffer,
 } from "@/shared/store/slices/editor-drafts";
 import { selectEditorSettings } from "@/shared/store/slices/settings";
 import { selectCurrentUserscript } from "@/shared/store/slices/userscripts";
-import { useGlobalState } from "@/options/invert-ide/contexts/global-state.context";
+import {
+  selectOutputDrawerCollapsed,
+  selectPanelSizes,
+  setOutputDrawerCollapsed,
+  updatePanelSizes,
+} from "@/shared/store/slices/ui";
 import { UserscriptSourceLanguage } from "@shared/model";
 import { useCallback, useEffect, useRef, useState } from "react";
 import { Group, Panel, PanelImperativeHandle } from "react-resizable-panels";
@@ -31,6 +37,9 @@ import { useEditorErrorTracking } from "@/shared/hooks/useEditorErrorTracking";
 
 type EditorBuffer = UserscriptSourceLanguage | "typeDefinitions";
 
+/** Live Output drawer preview — not on the typing critical path. */
+const PREVIEW_DEBOUNCE_MS = 400;
+
 export function ScriptEditor() {
   const dispatch = useAppDispatch();
   const script = useAppSelector(selectCurrentUserscript);
@@ -38,12 +47,13 @@ export function ScriptEditor() {
   const monacoReady = useAppSelector(selectMonacoReady);
   const settings = useAppSelector(selectEditorSettings);
   const draft = useAppSelector(selectDraftForScript(script.id));
-  const { globalState, updateGlobalState, updatePanelSizes } = useGlobalState();
+  const panelSizes = useAppSelector(selectPanelSizes);
+  const outputDrawerCollapsed = useAppSelector(selectOutputDrawerCollapsed);
 
   const [liveJs, setLiveJs] = useState("");
   const [liveCss, setLiveCss] = useState("");
   const [isDrawerCollapsed, setIsDrawerCollapsed] = useState(
-    globalState.outputDrawerCollapsed
+    outputDrawerCollapsed
   );
   const [tsEditorInstance, setTsEditorInstance] =
     useState<monaco.editor.IStandaloneCodeEditor | null>(null);
@@ -59,7 +69,10 @@ export function ScriptEditor() {
   );
 
   const drawerPanelRef = useRef<PanelImperativeHandle>(null);
+  const tsDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
   const scssDebounceRef = useRef<ReturnType<typeof setTimeout>>(null);
+  const tsPreviewGenerationRef = useRef(0);
+  const scssPreviewGenerationRef = useRef(0);
 
   const typescriptSource = draft?.typescript ?? script.code.source.typescript;
   const scssSource = draft?.scss ?? script.code.source.scss;
@@ -70,24 +83,49 @@ export function ScriptEditor() {
   useEditorErrorTracking(script.id, scssModel, "scss");
 
   useEffect(() => {
+    dispatch(ensureDraft(script));
+  }, [dispatch, script.id]);
+
+  // Seed drawer from last saved compile; live preview only runs when open.
+  useEffect(() => {
+    setLiveJs(script.code.compiled.javascript ?? "");
+    setLiveCss(script.code.compiled.css ?? "");
+  }, [script.id, script.code.compiled.javascript, script.code.compiled.css]);
+
+  useEffect(() => {
+    if (isDrawerCollapsed) {
+      return;
+    }
+
     let cancelled = false;
+    const generation = ++tsPreviewGenerationRef.current;
 
-    void (async () => {
-      const result = await buildUserscriptJavascript(
-        script,
-        typescriptSource,
-        getCompiledOutputBuildOptions(settings)
-      );
+    if (tsDebounceRef.current) {
+      clearTimeout(tsDebounceRef.current);
+    }
 
-      if (!cancelled) {
-        setLiveJs(result.success && result.code ? result.code : "");
-      }
-    })();
+    tsDebounceRef.current = setTimeout(() => {
+      void (async () => {
+        const result = await buildUserscriptJavascript(
+          script,
+          typescriptSource,
+          getCompiledOutputBuildOptions(settings)
+        );
+
+        if (!cancelled && generation === tsPreviewGenerationRef.current) {
+          setLiveJs(result.success && result.code ? result.code : "");
+        }
+      })();
+    }, PREVIEW_DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
+      if (tsDebounceRef.current) {
+        clearTimeout(tsDebounceRef.current);
+      }
     };
   }, [
+    isDrawerCollapsed,
     typescriptSource,
     script.shared,
     script.moduleName,
@@ -97,22 +135,29 @@ export function ScriptEditor() {
   ]);
 
   useEffect(() => {
+    if (isDrawerCollapsed) {
+      return;
+    }
+
     let cancelled = false;
+    const generation = ++scssPreviewGenerationRef.current;
 
     if (scssDebounceRef.current) {
       clearTimeout(scssDebounceRef.current);
     }
 
-    scssDebounceRef.current = setTimeout(async () => {
-      const result = await buildUserscriptStylesheet(
-        scssSource,
-        getCompiledOutputBuildOptions(settings)
-      );
+    scssDebounceRef.current = setTimeout(() => {
+      void (async () => {
+        const result = await buildUserscriptStylesheet(
+          scssSource,
+          getCompiledOutputBuildOptions(settings)
+        );
 
-      if (!cancelled) {
-        setLiveCss(result.success && result.code ? result.code : "");
-      }
-    }, 400);
+        if (!cancelled && generation === scssPreviewGenerationRef.current) {
+          setLiveCss(result.success && result.code ? result.code : "");
+        }
+      })();
+    }, PREVIEW_DEBOUNCE_MS);
 
     return () => {
       cancelled = true;
@@ -120,7 +165,7 @@ export function ScriptEditor() {
         clearTimeout(scssDebounceRef.current);
       }
     };
-  }, [scssSource, settings.minifyCompiledOutput]);
+  }, [isDrawerCollapsed, scssSource, settings.minifyCompiledOutput]);
 
   const flushDraftBuffer = useCallback(
     (buffer: EditorBuffer, code: string) => {
@@ -152,7 +197,7 @@ export function ScriptEditor() {
 
     const collapsed = drawerPanelRef.current.isCollapsed();
     setIsDrawerCollapsed(collapsed);
-    updateGlobalState({ outputDrawerCollapsed: collapsed });
+    dispatch(setOutputDrawerCollapsed(collapsed));
   };
 
   return (
@@ -160,16 +205,29 @@ export function ScriptEditor() {
       <div className="flex min-w-0 items-center gap-sm border-b border-border bg-surface-raised p-sm px-md">
         <ScriptMetadata key={script.id} script={script} />
       </div>
+      {(!script.enabled || (script.urlPatterns?.length ?? 0) === 0) && (
+        <div
+          className="flex shrink-0 items-start gap-sm border-b border-accent-border bg-accent-subtle px-md py-sm"
+          data-testid="script-setup-banner"
+        >
+          <Typography
+            variant="caption"
+            className="font-mono text-text-muted-strong"
+          >
+            This script will not run until it has URL patterns and is enabled.
+            Add a pattern above, then flip the switch in the script list.
+          </Typography>
+        </div>
+      )}
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {ideReady && monacoReady ? (
           <Group
             orientation="vertical"
             id="script-editor-outer-panels"
             defaultLayout={{
-              "source-panels":
-                globalState.panelSizes.scriptCompiledOutputDrawerSplit,
+              "source-panels": panelSizes.scriptCompiledOutputDrawerSplit,
               "output-drawer":
-                100 - globalState.panelSizes.scriptCompiledOutputDrawerSplit,
+                100 - panelSizes.scriptCompiledOutputDrawerSplit,
             }}
             onLayoutChanged={(layout) => {
               if (drawerPanelRef.current?.isCollapsed()) {
@@ -177,9 +235,11 @@ export function ScriptEditor() {
               }
               const sourceSize = layout["source-panels"];
               if (sourceSize != null) {
-                updatePanelSizes({
-                  scriptCompiledOutputDrawerSplit: sourceSize,
-                });
+                dispatch(
+                  updatePanelSizes({
+                    scriptCompiledOutputDrawerSplit: sourceSize,
+                  })
+                );
               }
             }}
           >
@@ -190,17 +250,18 @@ export function ScriptEditor() {
                 style={{ height: "100%" }}
                 defaultLayout={{
                   "typescript-editor":
-                    globalState.panelSizes.scriptCodeEditorHorizontalSplit,
+                    panelSizes.scriptCodeEditorHorizontalSplit,
                   "scss-editor":
-                    100 -
-                    globalState.panelSizes.scriptCodeEditorHorizontalSplit,
+                    100 - panelSizes.scriptCodeEditorHorizontalSplit,
                 }}
                 onLayoutChanged={(layout) => {
                   const tsSize = layout["typescript-editor"];
                   if (tsSize != null) {
-                    updatePanelSizes({
-                      scriptCodeEditorHorizontalSplit: tsSize,
-                    });
+                    dispatch(
+                      updatePanelSizes({
+                        scriptCodeEditorHorizontalSplit: tsSize,
+                      })
+                    );
                   }
                 }}
               >
@@ -216,19 +277,18 @@ export function ScriptEditor() {
                     style={{ height: "100%" }}
                     defaultLayout={{
                       "typescript-source":
-                        globalState.panelSizes
-                          .scriptTypeDefinitionsVerticalSplit,
+                        panelSizes.scriptTypeDefinitionsVerticalSplit,
                       "typescript-definitions":
-                        100 -
-                        globalState.panelSizes
-                          .scriptTypeDefinitionsVerticalSplit,
+                        100 - panelSizes.scriptTypeDefinitionsVerticalSplit,
                     }}
                     onLayoutChanged={(layout) => {
                       const sourceSize = layout["typescript-source"];
                       if (sourceSize != null) {
-                        updatePanelSizes({
-                          scriptTypeDefinitionsVerticalSplit: sourceSize,
-                        });
+                        dispatch(
+                          updatePanelSizes({
+                            scriptTypeDefinitionsVerticalSplit: sourceSize,
+                          })
+                        );
                       }
                     }}
                   >
@@ -326,7 +386,7 @@ export function ScriptEditor() {
               data-testid="output-drawer"
               minSize="15%"
               maxSize="60%"
-              defaultSize={`${100 - globalState.panelSizes.scriptCompiledOutputDrawerSplit}%`}
+              defaultSize={`${100 - panelSizes.scriptCompiledOutputDrawerSplit}%`}
               collapsible
               collapsedSize="36px"
               onResize={onDrawerResize}

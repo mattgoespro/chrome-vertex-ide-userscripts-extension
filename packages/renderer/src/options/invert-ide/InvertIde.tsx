@@ -1,4 +1,3 @@
-import { useGlobalState } from "@/options/invert-ide/contexts/global-state.context";
 import { ConflictDialog } from "@/options/invert-ide/components/conflict-dialog/ConflictDialog";
 import { useStorageSync } from "@/options/invert-ide/hooks/useStorageSync";
 import { SassCompiler, initializeBuildWorker } from "@/sandbox/compiler";
@@ -15,6 +14,11 @@ import {
   loadUserscripts,
   rebuildCompiledUserscripts,
 } from "@/shared/store/slices/userscripts/thunks.userscripts";
+import { setCurrentUserscript } from "@/shared/store/slices/userscripts";
+import {
+  selectActiveSidebarTab,
+  setActiveSidebarTab,
+} from "@/shared/store/slices/ui";
 import { startWorkspaceService } from "@/shared/services/workspace-service";
 import { store } from "@/shared/store/store";
 import { useCallback, useEffect, useState } from "react";
@@ -25,9 +29,30 @@ import { ScriptsPage } from "./pages/scripts-page/ScriptsPage";
 import { Settings } from "./pages/settings-page/SettingsPage";
 import { useRegisterCoreCommands } from "./hooks/useRegisterCoreCommands";
 
+function restoreInitialUserscriptSelection(dispatch: ReturnType<typeof useAppDispatch>) {
+  const state = store.getState();
+
+  if (state.userscripts.currentUserscript) {
+    return;
+  }
+
+  const scripts = state.userscripts.scripts ?? {};
+  const scriptIds = Object.keys(scripts);
+
+  if (scriptIds.length === 0) {
+    return;
+  }
+
+  const restoredId = state.ui.selectedScriptId;
+  const targetId =
+    restoredId && scripts[restoredId] ? restoredId : scriptIds[0];
+
+  dispatch(setCurrentUserscript(targetId));
+}
+
 export function InvertIde() {
-  const { globalState, updateGlobalState } = useGlobalState();
   const dispatch = useAppDispatch();
+  const activeSidebarTab = useAppSelector(selectActiveSidebarTab);
   const settings = useAppSelector(selectEditorSettings);
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
 
@@ -59,8 +84,10 @@ export function InvertIde() {
           dispatch(loadModules()).unwrap(),
         ]);
 
-        // Single owner of store → Monaco sync: creates real models for every
-        // script, registers module package.json entries and ambient/CDN libs.
+        restoreInitialUserscriptSelection(dispatch);
+
+        // Single owner of store → Monaco sync: active script + shared-dep
+        // closure models, module package.json entries, ambient/CDN libs.
         stopWorkspaceService = startWorkspaceService(store);
 
         await dispatch(rebuildCompiledUserscripts({ scope: "stale" })).unwrap();
@@ -104,20 +131,17 @@ export function InvertIde() {
   }
 
   function onNavigate(button: AppSidebarTab) {
-    updateGlobalState({ activeSidebarTab: button });
+    dispatch(setActiveSidebarTab(button));
   }
 
   return (
     <div className="relative flex h-full flex-col overflow-hidden bg-surface-base">
       <div className="relative flex min-w-0 flex-1">
-        <Sidebar
-          active={globalState.activeSidebarTab}
-          onNavigate={onNavigate}
-        />
+        <Sidebar active={activeSidebarTab} onNavigate={onNavigate} />
         <div className="relative flex min-w-0 flex-1 *:animate-page-reveal">
-          {globalState.activeSidebarTab === "scripts" && <ScriptsPage />}
-          {globalState.activeSidebarTab === "modules" && <ModulesPage />}
-          {globalState.activeSidebarTab === "settings" && <Settings />}
+          {activeSidebarTab === "scripts" && <ScriptsPage />}
+          {activeSidebarTab === "modules" && <ModulesPage />}
+          {activeSidebarTab === "settings" && <Settings />}
         </div>
       </div>
       <CommandPalette

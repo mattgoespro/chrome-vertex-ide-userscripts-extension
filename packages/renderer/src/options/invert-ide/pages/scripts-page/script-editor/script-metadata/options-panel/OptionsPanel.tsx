@@ -8,6 +8,7 @@ import {
   PanelHeader,
   PanelSection,
 } from "@/shared/components/panel/Panel";
+import { Select } from "@/shared/components/select/Select";
 import { useAppSelector } from "@/shared/store/hooks";
 import { selectEnabledModules } from "@/shared/store/slices/modules";
 import { selectSharedUserscripts } from "@/shared/store/slices/userscripts";
@@ -17,6 +18,7 @@ import {
   GitForkIcon,
   PackageIcon,
   Share2Icon,
+  TimerIcon,
   Trash2Icon,
   WandSparklesIcon,
 } from "lucide-react";
@@ -39,6 +41,11 @@ const optionsTriggerVariants = cva(
   }
 );
 
+const RUN_AT_OPTIONS = [
+  { value: "beforePageLoad", label: "Before page load" },
+  { value: "afterPageLoad", label: "After page load" },
+] as const;
+
 type OptionsPanelProps = {
   script: Userscript;
   scriptName: string;
@@ -46,6 +53,7 @@ type OptionsPanelProps = {
   selectedModuleIds: string[];
   onModuleNameChange: (value: string) => void;
   onToggleModule: (moduleId: string, selected: boolean) => void;
+  onRunAtChange: (runAt: Userscript["runAt"]) => void;
   onDelete: () => void;
 };
 
@@ -56,6 +64,7 @@ export function OptionsPanel({
   selectedModuleIds,
   onModuleNameChange,
   onToggleModule,
+  onRunAtChange,
   onDelete,
 }: OptionsPanelProps) {
   const [open, setOpen] = useState(false);
@@ -134,6 +143,20 @@ export function OptionsPanel({
                 className="absolute top-1/2 right-1.5 -translate-y-1/2 text-text-muted-faint hover:border-accent-border hover:bg-accent-subtle hover:text-accent active:scale-[0.92]"
                 onClick={handleAutoFillModuleName}
                 title="Auto-fill from script name"
+              />
+            </div>
+          </PanelSection>
+          <PanelDivider />
+          <PanelHeader icon={<TimerIcon size={12} />}>Run at</PanelHeader>
+          <PanelSection>
+            <span className="font-body text-xs leading-[1.4] text-text-muted">
+              When to inject this script on matching pages.
+            </span>
+            <div data-testid="run-at-select">
+              <Select
+                value={script.runAt ?? "beforePageLoad"}
+                options={[...RUN_AT_OPTIONS]}
+                onChange={onRunAtChange}
               />
             </div>
           </PanelSection>

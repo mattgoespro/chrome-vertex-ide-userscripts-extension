@@ -1,10 +1,10 @@
-import { useAppSelector } from "@/shared/store/hooks";
 import {
   selectAllUserscripts,
   selectCurrentUserscript,
-} from "@/shared/store/slices/userscripts";
+} from "@/shared/store/slices/userscripts/selectors";
 import { ScriptListItem } from "@/shared/components/script-list-item/ScriptListItem";
 import { Userscript } from "@shared/model";
+import { useSelector } from "react-redux";
 
 type ScriptListProps = {
   scripts?: Userscript[];
@@ -12,8 +12,9 @@ type ScriptListProps = {
 };
 
 export function ScriptList({ scripts, onScriptSelected }: ScriptListProps) {
-  const currentScript = useAppSelector(selectCurrentUserscript);
-  const reduxScripts = useAppSelector(selectAllUserscripts);
+  // useSelector (untyped) so this list also works under the popup store.
+  const currentScript = useSelector(selectCurrentUserscript);
+  const reduxScripts = useSelector(selectAllUserscripts);
 
   const displayScripts = scripts ?? Object.values(reduxScripts ?? {});
 

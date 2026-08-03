@@ -4,13 +4,15 @@ import { Typography } from "@/shared/components/typography/Typography";
 import { useAppDispatch, useAppSelector } from "@/shared/store/hooks";
 import {
   DraftBuffer,
-  resolveAllConflictsKeepLocal,
   resolveAllConflictsTakeRemote,
-  resolveConflictKeepLocal,
   resolveConflictTakeRemote,
   selectPendingConflicts,
 } from "@/shared/store/slices/editor-drafts";
-import { useMemo } from "react";
+import {
+  keepAllLocalConflictsAndPersist,
+  keepLocalConflictAndPersist,
+} from "@/shared/store/slices/editor-drafts/thunks.conflicts";
+import { useMemo, useState } from "react";
 
 const BUFFER_LABELS: Record<DraftBuffer, string> = {
   typescript: "TypeScript",
@@ -32,6 +34,7 @@ export function ConflictDialog() {
   const dispatch = useAppDispatch();
   const conflicts = useAppSelector(selectPendingConflicts);
   const conflictList = useMemo(() => Object.values(conflicts), [conflicts]);
+  const [isPersisting, setIsPersisting] = useState(false);
 
   const open = conflictList.length > 0;
 
@@ -48,8 +51,16 @@ export function ConflictDialog() {
     dispatch(resolveConflictTakeRemote(conflict.remoteScript));
   };
 
-  const onKeepLocal = (scriptId: string) => {
-    dispatch(resolveConflictKeepLocal(scriptId));
+  const onKeepLocal = async (scriptId: string) => {
+    setIsPersisting(true);
+
+    try {
+      await dispatch(keepLocalConflictAndPersist(scriptId)).unwrap();
+    } catch (error) {
+      console.error("Failed to persist local draft for conflict:", error);
+    } finally {
+      setIsPersisting(false);
+    }
   };
 
   const onTakeAllRemote = () => {
@@ -58,22 +69,35 @@ export function ConflictDialog() {
     dispatch(resolveAllConflictsTakeRemote(scripts));
   };
 
-  const onKeepAllLocal = () => {
-    dispatch(resolveAllConflictsKeepLocal());
+  const onKeepAllLocal = async () => {
+    setIsPersisting(true);
+
+    try {
+      await dispatch(keepAllLocalConflictsAndPersist()).unwrap();
+    } catch (error) {
+      console.error("Failed to persist local drafts for conflicts:", error);
+    } finally {
+      setIsPersisting(false);
+    }
   };
 
   return (
     <Dialog
       open={open}
-      onClose={onKeepAllLocal}
+      onClose={() => {
+        if (!isPersisting) {
+          void onKeepAllLocal();
+        }
+      }}
       title="Storage sync conflict"
       minWidth="32rem"
     >
       <div className="flex flex-col gap-md">
         <Typography variant="body" className="text-text-muted">
           Another browser or tab updated saved script content while you have
-          unsaved local edits. Choose whether to keep your local draft or load
-          the remote version.
+          unsaved local edits. Keep local writes your draft to sync (overwriting
+          remote). Take remote loads the synced version into the editor. Closing
+          this dialog keeps all local drafts.
         </Typography>
 
         <div className="flex max-h-[50vh] flex-col gap-sm overflow-y-auto">
@@ -113,12 +137,14 @@ export function ConflictDialog() {
               <div className="mt-sm flex gap-sm">
                 <Button
                   variant="secondary"
-                  onClick={() => onKeepLocal(conflict.scriptId)}
+                  disabled={isPersisting}
+                  onClick={() => void onKeepLocal(conflict.scriptId)}
                 >
                   Keep local
                 </Button>
                 <Button
                   variant="primary"
+                  disabled={isPersisting}
                   onClick={() => onTakeRemote(conflict.scriptId)}
                 >
                   Take remote
@@ -130,10 +156,18 @@ export function ConflictDialog() {
 
         {conflictList.length > 1 && (
           <div className="flex justify-end gap-sm border-t border-border-subtle pt-sm">
-            <Button variant="secondary" onClick={onKeepAllLocal}>
+            <Button
+              variant="secondary"
+              disabled={isPersisting}
+              onClick={() => void onKeepAllLocal()}
+            >
               Keep all local
             </Button>
-            <Button variant="primary" onClick={onTakeAllRemote}>
+            <Button
+              variant="primary"
+              disabled={isPersisting}
+              onClick={onTakeAllRemote}
+            >
               Take all remote
             </Button>
           </div>

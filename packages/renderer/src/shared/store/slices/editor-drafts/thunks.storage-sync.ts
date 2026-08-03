@@ -1,6 +1,7 @@
 import { createAsyncThunk } from "@reduxjs/toolkit/react";
 import { Userscript } from "@shared/model";
 import { ChromeSyncStorage, CompiledCodeStorage } from "@shared/storage";
+import { hydrateUserscriptWithCompiled } from "@shared/userscript-hydrate";
 import type { RootState } from "../../store";
 import { decideStorageSyncAction } from "./storage-sync-decision";
 import {
@@ -8,33 +9,6 @@ import {
   removeDraft,
   syncDraftFromRemoteScript,
 } from "./index";
-
-function normalizeUserscript(script: Userscript): Userscript {
-  return {
-    ...script,
-    typeDefinitions: script.typeDefinitions ?? "",
-  };
-}
-
-function mergeCompiledCode(
-  script: Userscript,
-  compiled?: { javascript: string; css: string } | null
-): Userscript {
-  if (!compiled) {
-    return script;
-  }
-
-  return {
-    ...script,
-    code: {
-      ...script.code,
-      compiled: {
-        javascript: compiled.javascript || script.code.compiled.javascript,
-        css: compiled.css || script.code.compiled.css,
-      },
-    },
-  };
-}
 
 export const refreshScriptsFromStorage = createAsyncThunk<
   { syncedScripts: Userscript[]; conflictIds: string[] },
@@ -65,17 +39,10 @@ export const refreshScriptsFromStorage = createAsyncThunk<
       const remoteScript = scriptsMap[scriptId];
       const localDraft = getState().editorDrafts.drafts[scriptId];
       const hydrated = remoteScript
-        ? mergeCompiledCode(
-            normalizeUserscript(remoteScript),
-            compiledCodeMap[scriptId]
-          )
+        ? hydrateUserscriptWithCompiled(remoteScript, compiledCodeMap[scriptId])
         : undefined;
 
-      const decision = decideStorageSyncAction(
-        scriptId,
-        localDraft,
-        hydrated
-      );
+      const decision = decideStorageSyncAction(scriptId, localDraft, hydrated);
 
       switch (decision.action) {
         case "keep-dirty-orphan":

@@ -11,13 +11,15 @@ export {
 /**
  * The workspace virtual file system.
  *
- * Every script file is a real Monaco text model at a canonical
- * `file:///scripts/<module>/...` URI. Because the TypeScript language service
- * runs with eager model sync, the worker sees these models as actual program
- * files: `import { x } from "scripts/<module>/main"` resolves through the
+ * Open script files are real Monaco text models at canonical
+ * `file:///scripts/<module>/...` URIs. The workspace service keeps models for
+ * the active script, its import / sharedScripts closure, every shared module
+ * (so switching away does not dispose modules other scripts still import),
+ * and dirty offscreen drafts. Because the TypeScript language service runs
+ * with eager model sync, the worker sees these models as actual program files:
+ * `import { x } from "scripts/<module>/main"` resolves through the
  * `baseUrl`/`paths` mapping straight to the dependency's real source — no
- * generated declaration files, no suppression listeners, no synthetic
- * package.json entries.
+ * generated declaration files, no suppression listeners.
  *
  * Monaco's own model registry (keyed by URI) is the single source of truth;
  * this module only tracks which URIs the workspace owns so orphaned models can
@@ -144,10 +146,14 @@ export function removeWorkspaceModel(uri: string): void {
       listener.dispose();
       pendingDetachDisposals.delete(uri);
 
-      // The workspace may have re-claimed the URI while disposal was pending.
-      if (!workspaceOwnedUris.has(uri) && !model.isDisposed()) {
-        model.dispose();
-      }
+      // Defer disposal until after Monaco finishes setModel/detach. Disposing
+      // synchronously inside this callback races Monaco's own detach cleanup
+      // ("Model is disposed!") and can crash the React tree.
+      queueMicrotask(() => {
+        if (!workspaceOwnedUris.has(uri) && !model.isDisposed()) {
+          model.dispose();
+        }
+      });
     }
   });
 
@@ -156,21 +162,24 @@ export function removeWorkspaceModel(uri: string): void {
 
 /**
  * Reconciles the set of workspace-owned models with the desired file list:
- * upserts every file and disposes owned models that are no longer present.
+ * upserts every desired file first, then disposes owned models that are no
+ * longer present. Upsert-before-dispose avoids a gap where a dependency is
+ * removed before its replacement (or re-upsert) is registered — that gap made
+ * TypeScript briefly (or sticky) report missing `scripts/<m>/main` modules.
  */
 export function syncWorkspaceModels(files: WorkspaceFile[]): void {
   const desiredUris = new Set(files.map((file) => file.uri));
-
-  for (const uri of [...workspaceOwnedUris]) {
-    if (!desiredUris.has(uri)) {
-      removeWorkspaceModel(uri);
-    }
-  }
 
   for (const file of files) {
     upsertWorkspaceModel(file.uri, file.language, file.contents, {
       preserveAttachedBuffer: file.preserveAttachedBuffer,
     });
+  }
+
+  for (const uri of [...workspaceOwnedUris]) {
+    if (!desiredUris.has(uri)) {
+      removeWorkspaceModel(uri);
+    }
   }
 }
 

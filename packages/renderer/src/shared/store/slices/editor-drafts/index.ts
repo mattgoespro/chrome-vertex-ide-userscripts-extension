@@ -1,11 +1,12 @@
-import { createSelector, createSlice, PayloadAction } from "@reduxjs/toolkit";
+import { createSlice, PayloadAction } from "@reduxjs/toolkit";
 import { Userscript } from "@shared/model";
-import type { RootState } from "../../store";
+import { setCurrentUserscript } from "../userscripts";
 import {
   createUserscript,
   deleteUserscript,
   importUserscripts,
   loadUserscripts,
+  saveUserscriptDraft,
   updateUserscriptCode,
   updateUserscriptTypeDefinitions,
 } from "../userscripts/thunks.userscripts";
@@ -21,11 +22,10 @@ import {
   applyResolveConflictTakeRemote,
   applySaveRejectionDirtyRestore,
   applySuccessfulCodeSave,
-  applySyncDraftFromRemote,
   applyUpdateDraftBuffer,
-  rebuildDraftsPreservingDirty,
 } from "./editor-drafts-transitions";
 import {
+  bumpDraftRevision,
   draftBufferForCodeLanguage,
   draftFromScript,
   DraftBuffer,
@@ -33,20 +33,51 @@ import {
   initialState,
   isDraftDirty,
   RemoteDraftConflict,
-  shouldRestoreDirtyOnSaveRejection,
 } from "./state.editor-drafts";
+
+function ensureDraftFromScript(
+  state: typeof initialState,
+  script: Userscript
+): EditorDraft {
+  const existing = state.drafts[script.id];
+
+  if (existing) {
+    return existing;
+  }
+
+  const created = draftFromScript(script);
+  state.drafts[script.id] = created;
+  return created;
+}
+
+function pruneCleanDrafts(
+  state: typeof initialState,
+  keepScriptIds: Iterable<string>
+) {
+  const keep = new Set(keepScriptIds);
+
+  for (const scriptId of Object.keys(state.drafts)) {
+    if (keep.has(scriptId)) {
+      continue;
+    }
+
+    if (!isDraftDirty(state.drafts[scriptId])) {
+      delete state.drafts[scriptId];
+    }
+  }
+}
 
 const editorDraftsSlice = createSlice({
   name: "editorDrafts",
   initialState,
   reducers: {
-    initDraftsFromScripts: {
-      prepare: (scripts: Userscript[]) => ({ payload: scripts }),
-      reducer: (state, action: PayloadAction<Userscript[]>) => {
-        state.drafts = rebuildDraftsPreservingDirty(
-          state.drafts,
-          action.payload
-        );
+    /**
+     * Ensure an open-document draft exists for a script (lazy create).
+     */
+    ensureDraft: {
+      prepare: (script: Userscript) => ({ payload: script }),
+      reducer: (state, action: PayloadAction<Userscript>) => {
+        ensureDraftFromScript(state, action.payload);
       },
     },
     updateDraftBuffer: {
@@ -100,7 +131,16 @@ const editorDraftsSlice = createSlice({
     syncDraftFromRemoteScript: {
       prepare: (script: Userscript) => ({ payload: script }),
       reducer: (state, action: PayloadAction<Userscript>) => {
-        applySyncDraftFromRemote(state.drafts, action.payload);
+        const script = action.payload;
+        const existing = state.drafts[script.id];
+
+        // Only refresh drafts that already exist (open / dirty). Untouched
+        // scripts stay draft-less until opened.
+        if (!existing) {
+          return;
+        }
+
+        state.drafts[script.id] = bumpDraftRevision(existing, script);
       },
     },
     removeDraft: {
@@ -174,11 +214,30 @@ const editorDraftsSlice = createSlice({
 
         applyCommitDraftForSave(draft, buffer, code, saveRequestId);
       })
+      .addCase(setCurrentUserscript, (state, action) => {
+        // Draft ensure for the newly selected script happens in the listener
+        // (needs the userscripts entity). Here we only prune clean offscreen
+        // drafts so the map stays open-document sized.
+        pruneCleanDrafts(state, [
+          action.payload.id,
+          ...Object.keys(state.drafts).filter((scriptId) =>
+            isDraftDirty(state.drafts[scriptId])
+          ),
+        ]);
+      })
       .addCase(loadUserscripts.fulfilled, (state, action) => {
-        state.drafts = rebuildDraftsPreservingDirty(
-          state.drafts,
-          action.payload
-        );
+        // Keep only dirty drafts across reload of the entity map; clean drafts
+        // are recreated lazily when a script is opened.
+        const validIds = new Set(action.payload.map((script) => script.id));
+        const nextDrafts: Record<string, EditorDraft> = {};
+
+        for (const [scriptId, draft] of Object.entries(state.drafts)) {
+          if (validIds.has(scriptId) && isDraftDirty(draft)) {
+            nextDrafts[scriptId] = draft;
+          }
+        }
+
+        state.drafts = nextDrafts;
       })
       .addCase(createUserscript.fulfilled, (state, action) => {
         state.drafts[action.payload.id] = draftFromScript(action.payload);
@@ -197,7 +256,6 @@ const editorDraftsSlice = createSlice({
         const draft = state.drafts[script.id];
 
         if (!draft) {
-          state.drafts[script.id] = draftFromScript(script);
           return;
         }
 
@@ -212,13 +270,30 @@ const editorDraftsSlice = createSlice({
         const draft = state.drafts[script.id];
 
         if (!draft) {
-          state.drafts[script.id] = draftFromScript(script);
           return;
         }
 
         draft.typeDefinitions = script.typeDefinitions ?? "";
         draft.dirty.typeDefinitions = false;
         draft.revision += 1;
+      })
+      .addCase(saveUserscriptDraft.fulfilled, (state, action) => {
+        const script = action.payload.script;
+        const draft = state.drafts[script.id];
+
+        if (!draft) {
+          state.drafts[script.id] = draftFromScript(script);
+          return;
+        }
+
+        draft.typescript = script.code.source.typescript;
+        draft.scss = script.code.source.scss;
+        draft.typeDefinitions = script.typeDefinitions ?? "";
+        draft.dirty.typescript = false;
+        draft.dirty.scss = false;
+        draft.dirty.typeDefinitions = false;
+        draft.revision += 1;
+        delete state.pendingConflicts[script.id];
       })
       .addCase(saveEditorCode.fulfilled, (state, action) => {
         const { scriptId, language } = action.meta.arg;
@@ -266,7 +341,7 @@ const editorDraftsSlice = createSlice({
 });
 
 export const {
-  initDraftsFromScripts,
+  ensureDraft,
   updateDraftBuffer,
   markDraftClean,
   applyRemoteScript,
@@ -289,44 +364,15 @@ export {
   getDraftOrSavedSource,
 } from "./helpers";
 
-export const selectDraftForScript =
-  (scriptId: string) =>
-  (state: RootState): EditorDraft | undefined =>
-    state.editorDrafts.drafts[scriptId];
-
-export const selectDraftBuffer = (scriptId: string, buffer: DraftBuffer) =>
-  createSelector(
-    selectDraftForScript(scriptId),
-    (draft) => draft?.[buffer] ?? ""
-  );
-
-export const selectDraftRevision = (scriptId: string) =>
-  createSelector(
-    selectDraftForScript(scriptId),
-    (draft) => draft?.revision ?? 0
-  );
-
-export const selectIsDraftDirty = (scriptId: string) =>
-  createSelector(selectDraftForScript(scriptId), (draft) =>
-    isDraftDirty(draft)
-  );
-
-export const selectIsDraftBufferDirty = (
-  scriptId: string,
-  buffer: DraftBuffer
-) =>
-  createSelector(
-    selectDraftForScript(scriptId),
-    (draft) => draft?.dirty[buffer] ?? false
-  );
-
-export const selectPendingConflicts = (state: RootState) =>
-  state.editorDrafts.pendingConflicts;
-
-export const selectHasPendingConflicts = createSelector(
+export {
+  selectDraftBuffer,
+  selectDraftForScript,
+  selectDraftRevision,
+  selectHasPendingConflicts,
+  selectIsDraftBufferDirty,
+  selectIsDraftDirty,
   selectPendingConflicts,
-  (conflicts) => Object.keys(conflicts).length > 0
-);
+} from "./selectors";
 
 export { isDraftDirty, draftFromScript };
 export type { DraftBuffer, EditorDraft, RemoteDraftConflict };

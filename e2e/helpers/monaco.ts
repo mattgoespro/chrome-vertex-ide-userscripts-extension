@@ -73,3 +73,60 @@ export async function waitForTypescriptEditorText(
     .poll(async () => readTypescriptEditorText(page), { timeout })
     .toContain(substring);
 }
+
+/** Expand the script editor problems drawer so error messages are in the DOM. */
+export async function expandProblemsDrawer(page: Page) {
+  const expand = page.getByTitle("Expand drawer");
+  if (await expand.isVisible().catch(() => false)) {
+    await expand.click();
+  }
+  await expect(page.getByTitle("Collapse drawer")).toBeVisible({
+    timeout: 15_000,
+  });
+
+  await page.getByText("problems", { exact: true }).click();
+}
+
+/**
+ * Assert the visible script has no "Cannot find module" diagnostics.
+ *
+ * Monaco's TS worker can report a clean panel briefly before markers arrive,
+ * so we require several consecutive clean polls after the panel has a settled
+ * message ("No errors or warnings" or any non-module diagnostic).
+ */
+export async function expectNoModuleImportErrors(
+  page: Page,
+  timeout = 20_000
+) {
+  await expandProblemsDrawer(page);
+
+  const problems = page.locator("[data-testid='output-drawer']");
+  const deadline = Date.now() + timeout;
+  let cleanStreak = 0;
+  const requiredStreak = 4;
+
+  while (Date.now() < deadline) {
+    const text = await problems.innerText();
+    const hasImportError = /Cannot find module/i.test(text);
+    const settled =
+      /No errors or warnings/i.test(text) || /Line\s+\d+:\d+/i.test(text);
+
+    if (hasImportError) {
+      cleanStreak = 0;
+    } else if (settled) {
+      cleanStreak += 1;
+      if (cleanStreak >= requiredStreak) {
+        return;
+      }
+    } else {
+      cleanStreak = 0;
+    }
+
+    await page.waitForTimeout(350);
+  }
+
+  const finalText = await problems.innerText();
+  throw new Error(
+    `Timed out waiting for shared-module imports to resolve.\nProblems panel:\n${finalText}`
+  );
+}

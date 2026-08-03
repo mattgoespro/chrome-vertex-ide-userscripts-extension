@@ -7,7 +7,7 @@ import { createRoot } from "react-dom/client";
 import { ErrorBoundary as ReactErrorBoundary } from "react-error-boundary";
 import { Provider } from "react-redux";
 import "../assets/styles/tailwind.css";
-import { GlobalStateProvider } from "./invert-ide/contexts/global-state.context";
+import { UiBootstrap } from "./invert-ide/components/ui-bootstrap/UiBootstrap";
 import { InvertIde } from "./invert-ide/InvertIde";
 
 createRoot(document.getElementById("root")).render(
@@ -16,9 +16,9 @@ createRoot(document.getElementById("root")).render(
       <Provider store={store}>
         <CommandRegistryProvider>
           <ToastProvider>
-            <GlobalStateProvider>
+            <UiBootstrap>
               <InvertIde />
-            </GlobalStateProvider>
+            </UiBootstrap>
           </ToastProvider>
         </CommandRegistryProvider>
       </Provider>

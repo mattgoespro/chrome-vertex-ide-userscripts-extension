@@ -2,6 +2,7 @@ import { updateBadgeForTab } from "../../ide/badge";
 import {
   injectMatchingScripts,
   loadRuntimeInjectionState,
+  prepareTabForInjection,
 } from "../../ide/scripts";
 
 export const onTabUpdated = async (
@@ -10,6 +11,7 @@ export const onTabUpdated = async (
   tab: chrome.tabs.Tab
 ): Promise<void> => {
   if (changeInfo.status === "loading" && tab.url) {
+    await prepareTabForInjection(tabId);
     const injectionState = await loadRuntimeInjectionState();
     await injectMatchingScripts(
       tabId,
@@ -19,6 +21,10 @@ export const onTabUpdated = async (
     );
     await updateBadgeForTab(tabId, tab.url, injectionState.scriptsMap);
   }
+};
+
+export const onTabRemoved = async (tabId: number): Promise<void> => {
+  await prepareTabForInjection(tabId);
 };
 
 export const onTabActivated = async (

@@ -194,4 +194,79 @@ test.describe("Scripts — draft sync", () => {
 
     await waitForTypescriptEditorText(optionsPage, "remote = 9");
   });
+
+  test("external storage change prompts conflict and keep-local persists draft to sync", async ({
+    optionsPage,
+    clearStorage,
+    seedStorage,
+  }) => {
+    const script = buildUserscript({
+      name: "KeepLocalScript",
+      code: {
+        source: {
+          typescript: "export const local = 1;",
+          scss: "",
+        },
+        compiled: { javascript: "", css: "" },
+      },
+    });
+
+    await clearStorage(optionsPage);
+    await seedStorage(optionsPage, { [`userscript:${script.id}`]: script });
+    await optionsPage.reload();
+
+    const options = new OptionsPage(optionsPage);
+    const scripts = new ScriptsPage(optionsPage);
+
+    await options.waitForReady();
+    await scripts.selectScript("KeepLocalScript");
+
+    await scripts.replaceTypescriptCode("export const dirty = 5;");
+    await scripts.waitForScriptModified("KeepLocalScript");
+
+    const remoteScript = {
+      ...script,
+      code: {
+        ...script.code,
+        source: {
+          ...script.code.source,
+          typescript: "export const remote = 9;",
+        },
+      },
+      updatedAt: Date.now(),
+    };
+    const remoteManifest = buildUserscriptSyncManifest(remoteScript);
+
+    await optionsPage.evaluate(
+      async ({ scriptId, manifest }) => {
+        const allItems = await chrome.storage.sync.get(null);
+        const modernKey = `userscript:${scriptId}`;
+        const chunkKeys = Object.keys(allItems).filter((key) =>
+          key.startsWith(`${modernKey}:chunk:`)
+        );
+
+        await chrome.storage.sync.remove([modernKey, ...chunkKeys]);
+        await chrome.storage.sync.set({ [modernKey]: manifest });
+      },
+      { scriptId: script.id, manifest: remoteManifest }
+    );
+
+    await expect(
+      optionsPage.getByRole("dialog", { name: "Storage sync conflict" })
+    ).toBeVisible({ timeout: 15_000 });
+
+    await optionsPage.getByRole("button", { name: "Keep local" }).click();
+
+    await expect(
+      optionsPage.getByRole("dialog", { name: "Storage sync conflict" })
+    ).not.toBeVisible({ timeout: 15_000 });
+
+    await waitForTypescriptEditorText(optionsPage, "dirty = 5");
+
+    // Hard reload proves keep-local wrote the draft to sync (not clear-only).
+    await optionsPage.reload();
+    await options.waitForReady();
+    await scripts.selectScript("KeepLocalScript");
+    await waitForTypescriptEditorText(optionsPage, "dirty = 5");
+  });
 });

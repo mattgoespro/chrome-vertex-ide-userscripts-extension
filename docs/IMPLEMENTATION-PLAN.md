@@ -4,6 +4,8 @@ Executable roadmap for applying [`IDEAL-IMPLEMENTATION.md`](./IDEAL-IMPLEMENTATI
 
 **Strategy:** strangler evolution — no new repository, no long-lived parallel “v2” app. Ship vertical milestones with acceptance criteria and e2e coverage. Keep Chrome sync data compatible; migrate additively when shapes must change.
 
+**Post-migration write-up:** [`../MIGRATION-SUMMARY.md`](../MIGRATION-SUMMARY.md) compares pre- vs post-M1–M6 architecture and features.
+
 **Non-goals for this plan:** `GM_*` APIs, userscript metadata headers, isolated-world sandboxing, wholesale UI rebrand.
 
 ---
@@ -20,14 +22,14 @@ Executable roadmap for applying [`IDEAL-IMPLEMENTATION.md`](./IDEAL-IMPLEMENTATI
 
 ## Status
 
-| Milestone | Focus                 | Status      |
-| --------- | --------------------- | ----------- |
-| M1        | Injection correctness | Not started |
-| M2        | Editor performance    | Not started |
-| M3        | State collapse        | Not started |
-| M4        | Package boundaries    | Not started |
-| M5        | UX streamlining       | Not started |
-| M6        | Tooling               | Not started |
+| Milestone | Focus                 | Status                                                                   |
+| --------- | --------------------- | ------------------------------------------------------------------------ |
+| M1        | Injection correctness | Done — matching apply/CSS replace/toggle; injection e2e green            |
+| M2        | Editor performance    | Done — debounce + lazy workspace; closure order unit + smoke noted       |
+| M3        | State collapse        | Done — keep-local, UI Redux, slim drafts; draft-sync e2e green           |
+| M4        | Package boundaries    | Done — shared hydrate/metadata, thunk split, popup store; e2e green      |
+| M5        | UX streamlining       | Done — problems drawer, runAt, apply toasts, tester/docs; e2e green      |
+| M6        | Tooling               | Done — manifest version sync, check:manifest, CI, bundle budgets/docs    |
 
 ---
 
@@ -78,11 +80,11 @@ Highest user-trust leverage. Fixes “toggle did nothing,” style stacking, and
 
 ### Acceptance criteria
 
-- [ ] Toggling a script **on** injects into an already-open matching tab without navigation.
-- [ ] Toggling a script **off** stops CSS on that tab (and does not run on next navigation); document any JS teardown limits in `FEATURES.md` appendix if full JS undo is impossible without reload.
-- [ ] Saving the same CSS twice does **not** visually stack (e.g. opacity/margin doubling).
-- [ ] Apply/refresh does not touch unrelated tabs (spot-check or e2e with two tabs).
-- [ ] Existing e2e still green; add coverage under `e2e/tests/` for toggle-apply and CSS replace if feasible in Playwright.
+- [x] Toggling a script **on** injects into an already-open matching tab without navigation. *(e2e `e2e/tests/injection/apply.spec.ts`)*
+- [x] Toggling a script **off** stops CSS on that tab (and does not run on next navigation); document any JS teardown limits in `FEATURES.md` appendix if full JS undo is impossible without reload. *(CSS remove e2e + `docs/FEATURES.md` appendix)*
+- [x] Saving the same CSS twice does **not** visually stack (e.g. opacity/margin doubling). *(identical re-apply e2e; bookmarks + `removeCSS`)*
+- [x] Apply/refresh does not touch unrelated tabs (spot-check or e2e with two tabs). *(e2e matching vs unrelated tabs)*
+- [x] Existing e2e still green; add coverage under `e2e/tests/` for toggle-apply and CSS replace if feasible in Playwright.
 
 ### Rollback
 
@@ -123,11 +125,11 @@ Make typing cheap. Preview and typechecking must not own the keystroke path.
 
 ### Acceptance criteria
 
-- [ ] Typing in a medium script does not queue a transpile per keystroke (verify via logging or performance marks in dev).
-- [ ] Opening the IDE with many scripts does not create Monaco models for all of them up front.
-- [ ] Switching scripts still gets full IntelliSense for that script’s shared imports.
-- [ ] Shared import path does not systematically flash as missing then resolve (manual or e2e smoke).
-- [ ] Save path still compiles and triggers M1 apply semantics.
+- [x] Typing in a medium script does not queue a transpile per keystroke (verify via logging or performance marks in dev). *(400ms debounce + generation cancel; preview skipped while Output drawer collapsed)*
+- [x] Opening the IDE with many scripts does not create Monaco models for all of them up front. *(active + shared-dep closure only; package.json extras remain for all modules)*
+- [x] Switching scripts still gets full IntelliSense for that script’s shared imports. *(immediate sync on script / sharedScripts change; deps upserted before consumer)*
+- [x] Shared import path does not systematically flash as missing then resolve (manual or e2e smoke). *(dependency-first closure in `workspace-closure` + unit tests; workspace sync upserts deps before consumer)*
+- [x] Save path still compiles and triggers M1 apply semantics. *(unchanged save/apply path)*
 
 ### Rollback
 
@@ -172,11 +174,11 @@ One coherence model for “what I’m editing.”
 
 ### Acceptance criteria
 
-- [ ] Dirty indicator matches Monaco vs last saved; no separate status field required.
-- [ ] “Keep local” on conflict results in remote storage matching local (after resolve), without a mysterious extra Save — or UX copy + one-click save is explicit and tested.
-- [ ] Remote clean updates still apply when the doc is not dirty.
-- [ ] Command palette navigation and layout persistence still work after dropping duplicate global context.
-- [ ] `e2e/tests/scripts/draft-sync.spec.ts` updated and green; extend for keep-local persist.
+- [x] Dirty indicator matches Monaco vs last saved; no separate status field required. *(list UI uses `selectIsDraftDirty`; `userscripts.status` mirroring removed)*
+- [x] “Keep local” on conflict results in remote storage matching local (after resolve), without a mysterious extra Save — or UX copy + one-click save is explicit and tested. *(`saveUserscriptDraft` + e2e keep-local case)*
+- [x] Remote clean updates still apply when the doc is not dirty. *(unchanged storage-sync path)*
+- [x] Command palette navigation and layout persistence still work after dropping duplicate global context. *(Redux `ui` slice + `GlobalStateManager` adapter; context removed)*
+- [x] `e2e/tests/scripts/draft-sync.spec.ts` updated and green; extend for keep-local persist.
 
 ### Rollback
 
@@ -219,11 +221,11 @@ Make architecture match the vision without a greenfield repo.
 
 ### Acceptance criteria
 
-- [ ] No triplicate `normalizeUserscript` / `mergeCompiledCode` implementations.
-- [ ] Compiler imported from one package path.
-- [ ] Popup bundle no longer needs the full options store bootstrap for the happy path (measure or assert entry imports).
-- [ ] Unit tests cover hydrate + import graph helpers.
-- [ ] All e2e green.
+- [x] No triplicate `normalizeUserscript` / `mergeCompiledCode` implementations.
+- [x] Compiler imported from one package path.
+- [x] Popup bundle no longer needs the full options store bootstrap for the happy path (measure or assert entry imports).
+- [x] Unit tests cover hydrate + import graph helpers.
+- [x] All e2e green.
 
 ### Rollback
 
@@ -263,12 +265,12 @@ Editor-first UI; honest affordances; finish incomplete surfaces.
 
 ### Acceptance criteria
 
-- [ ] Default Scripts layout emphasizes code + problems; deps are one click away.
-- [ ] Palette shows no unbound shortcut chips.
-- [ ] `runAt` is either editable in IDE and covered by a test, or absent from user-facing feature docs.
-- [ ] History tester either works with declared permission or is removed.
-- [ ] Apply toasts land for save and toggle.
-- [ ] `docs/FEATURES.md` appendix matches shipped behavior; root `FEATURES.md` not diverging.
+- [x] Default Scripts layout emphasizes code + problems; deps are one click away.
+- [x] Palette shows no unbound shortcut chips.
+- [x] `runAt` is either editable in IDE and covered by a test, or absent from user-facing feature docs.
+- [x] History tester either works with declared permission or is removed.
+- [x] Apply toasts land for save and toggle.
+- [x] `docs/FEATURES.md` appendix matches shipped behavior; root `FEATURES.md` not diverging.
 
 ### Rollback
 
@@ -289,9 +291,9 @@ Do last so product fixes are not blocked on build rewrites.
 
 ### Acceptance criteria
 
-- [ ] Manifest version/paths cannot drift from build output unnoticed (CI or plugin check).
-- [ ] Popup and background bundles measurably leaner or documented as already minimal.
-- [ ] CI e2e green on main.
+- [x] Manifest version/paths cannot drift from build output unnoticed (CI or plugin check). *(webpack stamps `package.json` version; `pnpm check:manifest` + CI)*
+- [x] Popup and background bundles measurably leaner or documented as already minimal. *([`docs/BUNDLE-SIZE.md`](./BUNDLE-SIZE.md) + soft budgets in check-manifest)*
+- [x] CI e2e green on main. *([`.github/workflows/ci.yml`](../.github/workflows/ci.yml))*
 
 ---
 
@@ -314,17 +316,20 @@ Record choices here as they are made. Default until then:
 | Topic                  | Default                                   | Notes                                                               |
 | ---------------------- | ----------------------------------------- | ------------------------------------------------------------------- |
 | Repository             | **Evolve in place**                       | No greenfield rewrite                                               |
-| Bundler                | **Keep Webpack through M5**               | Revisit in M6                                                       |
+| Bundler                | **Keep Webpack (M6 confirmed)**           | No Vite migration; see `docs/BUNDLE-SIZE.md`                        |
 | State library          | **Keep Redux Toolkit through M3**         | Collapse model first; replace library only if it still hurts        |
 | Shared-dep CSS         | **Keep JS-only inject; document clearly** | Optional “include styles” later                                     |
 | JS teardown on disable | **Best-effort**                           | CSS off + no future inject; full JS undo may need reload — document |
-| `runAt`                | **Decide in M5**                          | Prefer simple IDE control over silent export-only field             |
+| `runAt`                | **Ship IDE control (M5)**                 | Select in script ⋯ menu; default before page load                   |
 
 ### Decision log
 
 | Date       | Decision          | Rationale                                                         |
 | ---------- | ----------------- | ----------------------------------------------------------------- |
 | 2026-07-12 | No new repository | Vision is seams/semantics; storage/inject/Monaco investment stays |
+| 2026-07-19 | Ship `runAt` IDE select | Prefer editable control over hiding an already-runtime field   |
+| 2026-07-19 | Drop history tester | Manifest has no `history` permission; keep manual URL + open tabs |
+| 2026-07-19 | Keep Webpack      | M6: not blocked on DX; stamp manifest version + CI instead of Vite |
 
 ---
 

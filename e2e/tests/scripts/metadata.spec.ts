@@ -78,4 +78,62 @@ test.describe("Scripts — metadata", () => {
     await expect(moduleNameInput).toBeVisible();
     await expect(moduleNameInput).toHaveValue("my-module");
   });
+
+  test("runAt can be changed in script options and persists", async ({
+    optionsPage,
+    clearStorage,
+    seedStorage,
+  }) => {
+    const script = buildUserscript({
+      name: "RunAtScript",
+      runAt: "beforePageLoad",
+      enabled: true,
+      urlPatterns: ["https://example.com/*"],
+    });
+    await clearStorage(optionsPage);
+    await seedStorage(optionsPage, { [`userscript:${script.id}`]: script });
+    await optionsPage.reload();
+
+    const options = new OptionsPage(optionsPage);
+    const scripts = new ScriptsPage(optionsPage);
+
+    await options.waitForReady();
+    await scripts.selectScript("RunAtScript");
+    await expect(optionsPage.getByTestId("script-setup-banner")).toHaveCount(0);
+    await scripts.openOptionsPanel();
+
+    const runAtSelect = optionsPage.getByTestId("run-at-select");
+    await runAtSelect.locator("button").first().click();
+    await runAtSelect
+      .locator("button")
+      .filter({ hasText: "After page load" })
+      .click();
+
+    await expect(
+      runAtSelect.locator("button").first()
+    ).toContainText("After page load", { timeout: 10_000 });
+
+    await optionsPage.reload();
+    await options.waitForReady();
+    await scripts.selectScript("RunAtScript");
+    await scripts.openOptionsPanel();
+    await expect(
+      optionsPage.getByTestId("run-at-select").locator("button").first()
+    ).toContainText("After page load", { timeout: 10_000 });
+  });
+
+  test("new script without patterns shows setup banner", async ({
+    optionsPage,
+    clearStorage,
+  }) => {
+    await clearStorage(optionsPage);
+    await optionsPage.reload();
+
+    const options = new OptionsPage(optionsPage);
+    const scripts = new ScriptsPage(optionsPage);
+
+    await options.waitForReady();
+    await scripts.createScript();
+    await expect(optionsPage.getByTestId("script-setup-banner")).toBeVisible();
+  });
 });

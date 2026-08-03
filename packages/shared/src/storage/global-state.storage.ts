@@ -35,7 +35,7 @@ export interface GlobalState {
   /**
    * The ID of the most recently selected userscript, used to restore selection on reload.
    */
-  selectedScriptId?: string;
+  selectedScriptId?: string | null;
   /**
    * Whether the compiled output drawer is collapsed.
    */
@@ -83,7 +83,7 @@ export class GlobalStateManager {
 
   /**
    * The default UI state used when no persisted state is found. Must be kept in sync with the
-   * default value in {@link GlobalStateProvider}.
+   * Redux `ui` slice initial state.
    */
   static get defaultState(): GlobalState {
     return {

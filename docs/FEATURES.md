@@ -36,18 +36,21 @@ Optionally: share a script as a module for other scripts to import, or attach CD
 Author scripts in Invert IDE (Monaco) with TypeScript, SCSS, and per-script type definitions.
 
 - Language-aware editing: diagnostics, completions, hover, quick fixes
-- Live compiled JS/CSS preview and an errors drawer (click to jump)
-- Save persists, compiles, and re-injects into open tabs
+- Collapsible drawer defaults to **Problems**; compiled JS/CSS preview is one click away
+- Dependencies (shared imports + CDN attach) live in the script **⋯** menu — not in the code panes
+- Save persists, compiles, re-injects matching open tabs, and toasts how many tabs were updated
 - Local drafts until save, with a dirty indicator in the script list
-- Command palette (`Ctrl/Cmd+K`) to jump pages, create scripts, and open scripts by name
+- Sync conflicts: **Keep local** writes your draft to sync (overwrites remote); **Take remote** loads the synced version
+- Command palette (`Ctrl/Cmd+K`) to jump pages, create scripts, and open scripts by name (only `Ctrl/Cmd+K` and `Ctrl/Cmd+S` are hard-bound shortcuts)
 
 ### Match
 
 Control where each script runs with glob URL patterns (`*` / `?`).
 
-- Enable or disable from the IDE or the toolbar popup
+- Enable or disable from the IDE or the toolbar popup (toasts applied/removed matching-tab counts)
 - Badge shows how many scripts match the current tab
-- URL Pattern Tester: check a URL, open tabs, or recent history
+- URL Pattern Tester: check a typed URL or all open tabs
+- New scripts show a setup banner until they have patterns and are enabled
 
 ### Inject
 
@@ -56,6 +59,7 @@ Matching **enabled** scripts run automatically on navigation.
 - Compiled JavaScript in the page’s main world
 - Compiled CSS inserted into the page
 - Optional CDN libraries and shared-script dependencies load first
+- Per-script **Run at** timing: before or after page load (IDE **⋯** menu; default before load)
 - Saving (and import / minify rebuild) updates open tabs without restarting Chrome
 
 ### Compose
@@ -82,11 +86,12 @@ Application and editor themes (with live preview), font size, tab size, format o
 
 Useful when composing shared modules or debugging “why didn’t this run?”
 
-- **New scripts** start disabled, with no URL patterns — they never match until configured.
+- **New scripts** start disabled, with no URL patterns — they never match until configured. The editor shows a setup banner until both are set.
 - **Empty pattern list** matches nothing.
 - **Badge and popup** list matching scripts whether enabled or not; only enabled scripts inject.
 - **Injection order** on a page: CDN libraries → shared dependencies → userscript JS → userscript CSS (CDN and shared deps are de-duplicated).
 - **Shared dependencies** inject for a matching consumer even if the shared script is disabled or would not match the page. Only the shared script’s **JS** is pulled that way; its CSS applies only when that script itself matches and runs.
-- **Enable / disable** alone applies on the next navigation (or the next save-driven re-inject).
+- **Enable / disable** immediately applies or tears down on **matching open tabs** (no navigation required). Disable removes that script’s injected CSS when a prior insertion was tracked; MAIN-world **JS side effects are not undone** without a tab reload (the script will not run again on the next navigation).
+- **Save / rebuild / import** re-apply only to tabs whose URL matches the affected script(s), including consumers when a shared module’s JS changes. CSS re-apply uses replace semantics (previous insertion removed before insert).
+- **Run at** (`beforePageLoad` / `afterPageLoad`) is editable in the script options menu and preserved in import/export. New scripts default to before page load.
 - **Import** appends new IDs; missing CDN module refs are warned and stripped. Shared-module problems can block import.
-- Scripts carry before/after page-load timing (`runAt`) in the runtime and in import/export; new scripts default to before load. There is no IDE control for this yet.

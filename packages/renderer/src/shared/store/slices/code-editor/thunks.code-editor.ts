@@ -3,7 +3,7 @@ import { createAction, createAsyncThunk } from "@reduxjs/toolkit/react";
 import { updateUserscriptCode } from "../userscripts/thunks.userscripts";
 import { PrettierFormatter } from "@/sandbox/formatter";
 import { UserscriptSourceLanguage } from "@shared/model";
-import type { RuntimePortMessageEvent } from "@shared/messages";
+import { sendApplyScriptsMessage } from "../userscripts/messaging";
 
 export const setIdeReady = createAction<boolean>("code-editor/setIdeReady");
 
@@ -40,15 +40,11 @@ export const saveEditorCode = createAsyncThunk(
       updateUserscriptCode({ id: scriptId, language, code: formattedCode })
     ).unwrap();
 
-    const message: RuntimePortMessageEvent<"refreshTabs"> = {
-      source: "options",
-      type: "refreshTabs",
+    const applyResult = await sendApplyScriptsMessage([scriptId]);
+
+    return {
+      code: formattedCode,
+      appliedTabCount: applyResult.appliedTabCount,
     };
-
-    chrome.runtime.sendMessage(message).catch((error) => {
-      console.warn("Failed to send refreshTabs message:", error);
-    });
-
-    return { code: formattedCode };
   }
 );

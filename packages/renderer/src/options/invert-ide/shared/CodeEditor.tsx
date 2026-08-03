@@ -1,7 +1,9 @@
 import { FormatterLanguage } from "@/sandbox/formatter";
+import { useToast } from "@/shared/components/toast/ToastProvider";
 import { useAppDispatch, useAppSelector } from "@/shared/store/hooks";
 import { saveEditorCode } from "@/shared/store/slices/code-editor/thunks.code-editor";
 import { selectEditorSettings } from "@/shared/store/slices/settings";
+import { formatMatchingTabsToast } from "@/shared/store/slices/userscripts/messaging";
 import { EditorSettings } from "@shared/model";
 import {
   attachWorkspaceModel,
@@ -49,6 +51,7 @@ export function CodeEditor(props: CodeEditorProps) {
   } = props;
 
   const dispatch = useAppDispatch();
+  const { toast } = useToast();
   const appEditorSettings = useAppSelector(selectEditorSettings);
   const settings = settingsOverride
     ? { ...appEditorSettings, ...settingsOverride }
@@ -209,6 +212,21 @@ export function CodeEditor(props: CodeEditorProps) {
               })
             ).unwrap();
 
+        if (
+          result &&
+          typeof result === "object" &&
+          "appliedTabCount" in result &&
+          typeof result.appliedTabCount === "number"
+        ) {
+          toast({
+            variant: "info",
+            message: formatMatchingTabsToast(
+              result.appliedTabCount,
+              "Applied to"
+            ),
+          });
+        }
+
         const savedCode =
           typeof result === "string"
             ? result
@@ -241,7 +259,7 @@ export function CodeEditor(props: CodeEditorProps) {
     editorElement.addEventListener("keydown", handleKeyDown);
 
     return () => editorElement.removeEventListener("keydown", handleKeyDown);
-  }, [editable, scriptId, settings?.autoFormat, language, dispatch, onSave]);
+  }, [editable, scriptId, settings?.autoFormat, language, dispatch, onSave, toast]);
 
   return <div ref={editorRootRef} className="h-full w-full min-w-0"></div>;
 }

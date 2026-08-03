@@ -16,6 +16,13 @@ import {
 export class ScriptsPage {
   constructor(readonly page: Page) {}
 
+  private scriptRow(name: string) {
+    return this.scriptListPanel
+      .locator("div.group")
+      .filter({ has: this.page.getByText(name, { exact: true }) })
+      .first();
+  }
+
   // ─── Script List ──────────────────────────────────────────────────────────
 
   /** The sidebar panel containing the script list. */
@@ -77,24 +84,18 @@ export class ScriptsPage {
 
   /** Toggle the enabled/disabled switch for a script by name. */
   async toggleScript(name: string) {
-    const item = this.scriptListPanel
-      .locator("div")
-      .filter({ has: this.page.getByText(name, { exact: true }) });
+    const item = this.scriptRow(name);
     const checkbox = item.locator("input[type='checkbox']");
+    const slider = item.locator("label.switch--wrapper .switch--slider");
     const wasChecked = await checkbox.isChecked();
+    const expectEnabled = !wasChecked;
 
-    // Click the visible label wrapper (triggers the hidden checkbox via HTML label behavior).
-    await item.locator("label.switch--wrapper").first().click({ force: true });
-
-    if (wasChecked) {
-      await expect(checkbox).not.toBeChecked({ timeout: 15_000 });
-    } else {
-      await expect(checkbox).toBeChecked({ timeout: 15_000 });
-    }
+    await slider.click({ force: true });
 
     // Wait for the toggleUserscript thunk to persist to chrome.storage.sync.
+    // Sync omits `enabled` when false, so treat a missing flag as disabled.
     await this.page.waitForFunction(
-      async (scriptName) => {
+      async ({ scriptName, enabled }) => {
         const data = await chrome.storage.sync.get(null);
 
         for (const [key, value] of Object.entries(data)) {
@@ -114,30 +115,26 @@ export class ScriptsPage {
           };
 
           if (json.name === scriptName) {
-            return json.enabled !== true;
+            return (json.enabled === true) === enabled;
           }
         }
 
         return false;
       },
-      name,
+      { scriptName: name, enabled: expectEnabled },
       { timeout: 15_000 }
     );
   }
 
   /** Check whether the script's modified pulse indicator is visible. */
   async isScriptModified(name: string): Promise<boolean> {
-    const item = this.scriptListPanel
-      .locator("div")
-      .filter({ has: this.page.getByText(name, { exact: true }) });
+    const item = this.scriptRow(name);
     return item.locator(".animate-pulse-indicator").isVisible();
   }
 
   /** Wait until the script's modified pulse indicator appears. */
   async waitForScriptModified(name: string) {
-    const item = this.scriptListPanel
-      .locator("div")
-      .filter({ has: this.page.getByText(name, { exact: true }) });
+    const item = this.scriptRow(name);
     await expect(item.locator(".animate-pulse-indicator")).toBeVisible({
       timeout: 15_000,
     });

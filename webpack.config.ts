@@ -191,6 +191,7 @@ export default (
 
               delete manifest.$schema;
               manifest.description = packageJson.description;
+              manifest.version = packageJson.version;
 
               return JSON.stringify(manifest);
             },

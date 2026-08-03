@@ -31,7 +31,7 @@
   "editor.formatOnSave": true,
   "editor.letterSpacing": -0.5,
   "editor.linkedEditing": true,
-  "editor.minimap.autohide": true,
+  "editor.minimap.autohide": "mouseover",
   "editor.minimap.maxColumn": 150,
   "editor.minimap.scale": 3,
   "editor.minimap.showSlider": "mouseover",
@@ -123,9 +123,9 @@
   "vsicons.dontShowNewVersionMessage": true,
   "window.autoDetectColorScheme": false,
   "workbench.activityBar.orientation": "vertical",
-  "workbench.colorTheme": "Default Dark Modern",
+  "workbench.colorTheme": "Dark Modern",
   "workbench.editor.closeOnFileDelete": true,
-  "workbench.iconTheme": "vs-seti",
+  "workbench.iconTheme": "vscode-icons",
   "workbench.settings.enableNaturalLanguageSearch": true,
   "workbench.tree.indent": 10
 }

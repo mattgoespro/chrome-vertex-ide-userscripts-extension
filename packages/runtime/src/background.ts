@@ -1,5 +1,6 @@
 import {
   onTabActivated,
+  onTabRemoved,
   onTabUpdated,
 } from "./handlers/component-handlers/tab.handler";
 import { onWebNavigationCompleted } from "./handlers/extension-handlers/navigation.handler";
@@ -28,3 +29,4 @@ chrome.runtime.onMessage.addListener(onMessage);
  */
 chrome.tabs.onUpdated.addListener(onTabUpdated);
 chrome.tabs.onActivated.addListener(onTabActivated);
+chrome.tabs.onRemoved.addListener(onTabRemoved);
