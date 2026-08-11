@@ -3,6 +3,15 @@ import { getAffectedScriptIdsFromStorageChanges } from "@/shared/store/slices/ed
 import { refreshScriptsFromStorage } from "@/shared/store/slices/editor-drafts/thunks.storage-sync";
 import { useEffect, useRef } from "react";
 
+/**
+ * Keep IDE drafts/entities reconciled with chrome.storage.sync.
+ *
+ * - `onChanged` is the primary signal for same- and cross-context writes.
+ * - `visibilitychange` catches missed events when returning to a backgrounded
+ *   IDE tab (e.g. another IDE window wrote while this one was hidden).
+ * - Full refreshes on every `pageshow` were dropped; bfcache restores still
+ *   fire visibility when shown.
+ */
 export function useStorageSync() {
   const dispatch = useAppDispatch();
   const refreshInFlightRef = useRef(false);
@@ -47,18 +56,12 @@ export function useStorageSync() {
       }
     };
 
-    const onPageShow = () => {
-      void refresh();
-    };
-
     chrome.storage.onChanged.addListener(onStorageChanged);
     document.addEventListener("visibilitychange", onVisibilityChange);
-    window.addEventListener("pageshow", onPageShow);
 
     return () => {
       chrome.storage.onChanged.removeListener(onStorageChanged);
       document.removeEventListener("visibilitychange", onVisibilityChange);
-      window.removeEventListener("pageshow", onPageShow);
     };
   }, [dispatch]);
 }

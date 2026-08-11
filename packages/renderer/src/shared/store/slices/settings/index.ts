@@ -1,6 +1,4 @@
-import { createSlice, PayloadAction } from "@reduxjs/toolkit";
-import type { EditorThemeName } from "@shared/editor-theme";
-import { AppThemeName } from "@shared/model";
+import { createSlice } from "@reduxjs/toolkit";
 import { loadSettings, updateSettings } from "./thunks.settings";
 import { initialState, SettingsState } from "./state.settings";
 import { ChromeSyncStorage } from "@shared/storage";
@@ -16,23 +14,7 @@ const settingsSlice = createSlice({
       return state.isLoading;
     },
   },
-  reducers: {
-    setTheme: (state, action: PayloadAction<EditorThemeName>) => {
-      state.editorSettings.theme = action.payload;
-    },
-    setFontSize: (state, action: PayloadAction<number>) => {
-      state.editorSettings.fontSize = action.payload;
-    },
-    setTabSize: (state, action: PayloadAction<number>) => {
-      state.editorSettings.tabSize = action.payload;
-    },
-    setAutoFormat: (state, action: PayloadAction<boolean>) => {
-      state.editorSettings.autoFormat = action.payload;
-    },
-    setAppTheme: (state, action: PayloadAction<AppThemeName>) => {
-      state.editorSettings.appTheme = action.payload;
-    },
-  },
+  reducers: {},
   extraReducers: (builder) => {
     builder
       .addCase(loadSettings.pending, (state) => {
@@ -53,9 +35,6 @@ const settingsSlice = createSlice({
       });
   },
 });
-
-export const { setTheme, setFontSize, setTabSize, setAutoFormat, setAppTheme } =
-  settingsSlice.actions;
 
 export const { selectEditorSettings, selectIsLoading } =
   settingsSlice.selectors;

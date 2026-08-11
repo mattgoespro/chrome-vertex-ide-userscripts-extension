@@ -54,6 +54,10 @@ export const refreshScriptsFromStorage = createAsyncThunk<
           dispatch(enqueueConflict(decision.conflict));
           conflictIds.push(scriptId);
           break;
+        case "sync-entity":
+          // Update the userscripts entity only — leave the dirty draft alone.
+          syncedScripts.push(decision.script);
+          break;
         case "sync":
           dispatch(syncDraftFromRemoteScript(decision.script));
           syncedScripts.push(decision.script);

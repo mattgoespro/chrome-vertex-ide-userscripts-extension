@@ -6,8 +6,9 @@ import { Typography } from "@/shared/components/typography/Typography";
 import { useAppDispatch, useAppSelector } from "@/shared/store/hooks";
 import {
   selectAllUserscripts,
-  setCurrentUserscript,
+  selectCurrentUserscript,
 } from "@/shared/store/slices/userscripts";
+import { selectUserscript } from "@/shared/store/select-userscript";
 import {
   buildUserscriptsTransferFile,
   stringifyUserscriptsTransferFile,
@@ -37,9 +38,7 @@ export function ScriptsPage() {
   const dispatch = useAppDispatch();
   const { toast } = useToast();
   const scripts = useAppSelector(selectAllUserscripts);
-  const selectedScript = useAppSelector(
-    (state) => state.userscripts.currentUserscript
-  );
+  const selectedScript = useAppSelector(selectCurrentUserscript);
   const panelSizes = useAppSelector(selectPanelSizes);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
   const [isImporting, setIsImporting] = useState(false);
@@ -108,7 +107,7 @@ export function ScriptsPage() {
   );
 
   const onScriptSelected = (scriptId: string) => {
-    dispatch(setCurrentUserscript(scriptId));
+    dispatch(selectUserscript(scriptId));
   };
 
   return (

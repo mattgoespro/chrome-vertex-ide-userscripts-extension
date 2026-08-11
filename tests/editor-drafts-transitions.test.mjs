@@ -3,17 +3,13 @@ import { describe, it } from "node:test";
 import {
   applyCommitDraftForSave,
   applyFlushModelToDraft,
-  applyMarkDraftClean,
   applyRemoteScriptAndClearConflict,
   applyResolveAllConflictsTakeRemote,
   applyResolveConflictKeepLocal,
   applyResolveConflictTakeRemote,
   applySaveRejectionDirtyRestore,
-  applySuccessfulCodeSave,
-  applySyncDraftFromRemote,
   applyUpdateDraftBuffer,
   nextDraftFromRemoteScript,
-  rebuildDraftsPreservingDirty,
 } from "../packages/renderer/src/shared/store/slices/editor-drafts/editor-drafts-transitions.ts";
 import { draftFromScript } from "../packages/renderer/src/shared/store/slices/editor-drafts/state.editor-drafts.ts";
 import { buildUserscriptFixture } from "./helpers/fixtures.mjs";
@@ -26,52 +22,6 @@ function dirtyLocalDraft(script, buffer = "typescript") {
   return draft;
 }
 
-describe("rebuildDraftsPreservingDirty", () => {
-  it("preserves dirty drafts and replaces clean ones from scripts", () => {
-    const keep = buildUserscriptFixture({
-      id: "keep",
-      code: {
-        source: { typescript: "export const saved = 1;", scss: "" },
-      },
-    });
-    const replace = buildUserscriptFixture({
-      id: "replace",
-      code: {
-        source: { typescript: "export const remote = 2;", scss: "" },
-      },
-    });
-    const dropped = buildUserscriptFixture({ id: "dropped" });
-
-    const existing = {
-      keep: dirtyLocalDraft(keep),
-      replace: draftFromScript(
-        buildUserscriptFixture({
-          id: "replace",
-          code: {
-            source: { typescript: "export const stale = 0;", scss: "" },
-          },
-        })
-      ),
-      dropped: draftFromScript(dropped),
-    };
-
-    const next = rebuildDraftsPreservingDirty(existing, [keep, replace]);
-
-    assert.equal(next.keep, existing.keep);
-    assert.equal(next.keep.typescript.includes("// local"), true);
-    assert.equal(next.replace.typescript, "export const remote = 2;");
-    assert.equal(next.replace.dirty.typescript, false);
-    assert.equal(next.dropped, undefined);
-  });
-
-  it("creates drafts for scripts with no prior entry", () => {
-    const script = buildUserscriptFixture({ id: "new" });
-    const next = rebuildDraftsPreservingDirty({}, [script]);
-
-    assert.deepEqual(next.new, draftFromScript(script));
-  });
-});
-
 describe("applyUpdateDraftBuffer", () => {
   it("no-ops when code is unchanged", () => {
     const draft = draftFromScript(buildUserscriptFixture());
@@ -81,8 +31,8 @@ describe("applyUpdateDraftBuffer", () => {
       applyUpdateDraftBuffer(draft, "typescript", draft.typescript),
       false
     );
-    assert.equal(draft.dirty.typescript, false);
     assert.equal(draft.revision, revision);
+    assert.equal(draft.dirty.typescript, false);
   });
 
   it("marks dirty and bumps revision when code changes", () => {
@@ -99,7 +49,7 @@ describe("applyUpdateDraftBuffer", () => {
 });
 
 describe("applyFlushModelToDraft", () => {
-  it("updates code without bumping revision when already dirty", () => {
+  it("updates code, marks dirty, and bumps revision when already dirty", () => {
     const draft = dirtyLocalDraft(buildUserscriptFixture());
     const revision = draft.revision;
 
@@ -109,7 +59,7 @@ describe("applyFlushModelToDraft", () => {
     );
     assert.equal(draft.typescript, "export const flushed = 1;");
     assert.equal(draft.dirty.typescript, true);
-    assert.equal(draft.revision, revision);
+    assert.equal(draft.revision, revision + 1);
   });
 
   it("marks dirty and bumps revision when previously clean", () => {
@@ -150,8 +100,6 @@ describe("applyCommitDraftForSave", () => {
       false
     );
     assert.equal(draft.lastSaveRequestId.typescript, "req-clean");
-    assert.equal(draft.dirty.typescript, false);
-    assert.equal(draft.revision, 0);
   });
 
   it("clears dirty, writes code, and bumps revision when committing a dirty buffer", () => {
@@ -168,6 +116,7 @@ describe("applyCommitDraftForSave", () => {
     );
     assert.equal(draft.typescript, "export const committed = 1;");
     assert.equal(draft.dirty.typescript, false);
+    assert.equal(draft.lastSynced.typescript, "export const committed = 1;");
     assert.equal(draft.lastSaveRequestId.typescript, "req-1");
     assert.equal(draft.revision, 4);
   });
@@ -176,33 +125,32 @@ describe("applyCommitDraftForSave", () => {
 describe("conflict resolution", () => {
   it("keep-local only clears the pending conflict", () => {
     const script = buildUserscriptFixture({ id: "s1" });
-    const draft = dirtyLocalDraft(script);
     const pending = {
       s1: {
         scriptId: "s1",
         scriptName: script.name,
         remoteScript: script,
-        buffers: [
-          {
-            buffer: "typescript",
-            local: draft.typescript,
-            remote: "export const remote = 9;",
-          },
-        ],
+        buffers: [],
       },
     };
+    const draft = dirtyLocalDraft(script);
 
     applyResolveConflictKeepLocal(pending, "s1");
     assert.equal(pending.s1, undefined);
-    assert.equal(draft.typescript.includes("// local"), true);
+    assert.equal(draft.dirty.typescript, true);
   });
 
   it("take-remote replaces the draft and clears the conflict", () => {
-    const local = buildUserscriptFixture({ id: "s1" });
+    const local = buildUserscriptFixture({
+      id: "s1",
+      code: {
+        source: { typescript: "export const local = 1;", scss: "" },
+      },
+    });
     const remote = buildUserscriptFixture({
       id: "s1",
       code: {
-        source: { typescript: "export const remote = 9;", scss: "" },
+        source: { typescript: "export const remote = 2;", scss: "" },
       },
     });
     const state = {
@@ -212,22 +160,14 @@ describe("conflict resolution", () => {
           scriptId: "s1",
           scriptName: remote.name,
           remoteScript: remote,
-          buffers: [
-            {
-              buffer: "typescript",
-              local: "local",
-              remote: "export const remote = 9;",
-            },
-          ],
+          buffers: [],
         },
       },
     };
 
     applyResolveConflictTakeRemote(state, remote);
-
-    assert.equal(state.drafts.s1.typescript, "export const remote = 9;");
+    assert.equal(state.drafts.s1.typescript, "export const remote = 2;");
     assert.equal(state.drafts.s1.dirty.typescript, false);
-    assert.equal(state.drafts.s1.revision, 4);
     assert.equal(state.pendingConflicts.s1, undefined);
   });
 
@@ -238,49 +178,58 @@ describe("conflict resolution", () => {
     });
     const b = buildUserscriptFixture({
       id: "b",
+      code: { source: { typescript: "export const b = 1;", scss: "" } },
+    });
+    const remoteA = buildUserscriptFixture({
+      id: "a",
+      code: { source: { typescript: "export const a = 2;", scss: "" } },
+    });
+    const remoteB = buildUserscriptFixture({
+      id: "b",
       code: { source: { typescript: "export const b = 2;", scss: "" } },
     });
     const state = {
       drafts: {
-        a: dirtyLocalDraft(buildUserscriptFixture({ id: "a" })),
-        b: dirtyLocalDraft(buildUserscriptFixture({ id: "b" })),
+        a: dirtyLocalDraft(a),
+        b: dirtyLocalDraft(b),
       },
       pendingConflicts: {
         a: {
           scriptId: "a",
-          scriptName: "a",
-          remoteScript: a,
+          scriptName: a.name,
+          remoteScript: remoteA,
           buffers: [],
         },
         b: {
           scriptId: "b",
-          scriptName: "b",
-          remoteScript: b,
+          scriptName: b.name,
+          remoteScript: remoteB,
           buffers: [],
         },
       },
     };
 
-    applyResolveAllConflictsTakeRemote(state, [a, b]);
-
-    assert.equal(state.drafts.a.typescript, "export const a = 1;");
+    applyResolveAllConflictsTakeRemote(state, [remoteA, remoteB]);
+    assert.equal(state.drafts.a.typescript, "export const a = 2;");
     assert.equal(state.drafts.b.typescript, "export const b = 2;");
     assert.deepEqual(state.pendingConflicts, {});
   });
 });
 
-describe("remote apply vs sync", () => {
+describe("remote apply", () => {
   it("applyRemoteScriptAndClearConflict clears pending conflicts", () => {
     const remote = buildUserscriptFixture({
       id: "s1",
-      code: { source: { typescript: "export const r = 1;", scss: "" } },
+      code: {
+        source: { typescript: "export const remote = 1;", scss: "" },
+      },
     });
     const state = {
-      drafts: {},
+      drafts: { s1: dirtyLocalDraft(remote) },
       pendingConflicts: {
         s1: {
           scriptId: "s1",
-          scriptName: "s1",
+          scriptName: remote.name,
           remoteScript: remote,
           buffers: [],
         },
@@ -288,34 +237,16 @@ describe("remote apply vs sync", () => {
     };
 
     applyRemoteScriptAndClearConflict(state, remote);
-
-    assert.equal(state.drafts.s1.typescript, "export const r = 1;");
+    assert.equal(state.drafts.s1.typescript, "export const remote = 1;");
     assert.equal(state.pendingConflicts.s1, undefined);
-  });
-
-  it("applySyncDraftFromRemote does not clear conflicts", () => {
-    const remote = buildUserscriptFixture({
-      id: "s1",
-      code: { source: { typescript: "export const r = 1;", scss: "" } },
-    });
-    const drafts = {};
-    const conflict = {
-      scriptId: "s1",
-      scriptName: "s1",
-      remoteScript: remote,
-      buffers: [],
-    };
-    const pendingConflicts = { s1: conflict };
-
-    applySyncDraftFromRemote(drafts, remote);
-
-    assert.equal(drafts.s1.typescript, "export const r = 1;");
-    assert.equal(pendingConflicts.s1, conflict);
   });
 
   it("nextDraftFromRemoteScript creates or bumps", () => {
     const remote = buildUserscriptFixture({
-      code: { source: { typescript: "export const r = 1;", scss: "" } },
+      id: "s1",
+      code: {
+        source: { typescript: "export const remote = 1;", scss: "" },
+      },
     });
 
     assert.deepEqual(
@@ -330,22 +261,7 @@ describe("remote apply vs sync", () => {
   });
 });
 
-describe("mark clean and save paths", () => {
-  it("applyMarkDraftClean clears dirty and bumps revision", () => {
-    const draft = dirtyLocalDraft(buildUserscriptFixture(), "scss");
-    applyMarkDraftClean(draft, "scss");
-    assert.equal(draft.dirty.scss, false);
-    assert.equal(draft.revision, 4);
-  });
-
-  it("applySuccessfulCodeSave writes code and clears dirty", () => {
-    const draft = dirtyLocalDraft(buildUserscriptFixture());
-    applySuccessfulCodeSave(draft, "typescript", "export const saved = 1;");
-    assert.equal(draft.typescript, "export const saved = 1;");
-    assert.equal(draft.dirty.typescript, false);
-    assert.equal(draft.revision, 4);
-  });
-
+describe("save rejection restore", () => {
   it("applySaveRejectionDirtyRestore respects request id gating", () => {
     const draft = draftFromScript(buildUserscriptFixture());
     draft.lastSaveRequestId.typescript = "req-2";

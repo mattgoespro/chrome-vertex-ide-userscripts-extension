@@ -5,32 +5,8 @@ import {
   DraftBuffer,
   EditorDraft,
   EditorDraftsState,
-  isDraftDirty,
   RemoteDraftConflict,
 } from "./state.editor-drafts";
-
-/**
- * Rebuild the drafts map from scripts, preserving any still-present dirty drafts.
- * Used by initDraftsFromScripts and loadUserscripts.fulfilled.
- */
-export function rebuildDraftsPreservingDirty(
-  existingDrafts: Record<string, EditorDraft>,
-  scripts: Userscript[]
-): Record<string, EditorDraft> {
-  const nextDrafts: Record<string, EditorDraft> = {};
-
-  for (const script of scripts) {
-    const existing = existingDrafts[script.id];
-
-    if (existing && isDraftDirty(existing)) {
-      nextDrafts[script.id] = existing;
-    } else {
-      nextDrafts[script.id] = draftFromScript(script);
-    }
-  }
-
-  return nextDrafts;
-}
 
 /**
  * Apply an editor edit to a draft buffer. No-ops when the code is unchanged.
@@ -52,8 +28,9 @@ export function applyUpdateDraftBuffer(
 }
 
 /**
- * Flush Monaco model text into a draft. Updates the buffer always when different,
- * but only marks dirty + bumps revision when the buffer was previously clean.
+ * Flush Monaco model text into a draft before a script switch / model reconcile.
+ * Always marks dirty and bumps revision when the buffer differs so WorkspaceService
+ * sees the update and will not overwrite the attached model with a stale draft.
  * Returns true when the draft was mutated.
  */
 export function applyFlushModelToDraft(
@@ -66,12 +43,8 @@ export function applyFlushModelToDraft(
   }
 
   draft[buffer] = code;
-
-  if (!draft.dirty[buffer]) {
-    draft.dirty[buffer] = true;
-    draft.revision += 1;
-  }
-
+  draft.dirty[buffer] = true;
+  draft.revision += 1;
   return true;
 }
 
@@ -95,19 +68,9 @@ export function applyCommitDraftForSave(
 
   draft[buffer] = code;
   draft.dirty[buffer] = false;
+  draft.lastSynced[buffer] = code;
   draft.revision += 1;
   return true;
-}
-
-/**
- * Mark a single buffer clean and bump revision. No-ops if draft is missing.
- */
-export function applyMarkDraftClean(
-  draft: EditorDraft,
-  buffer: DraftBuffer
-): void {
-  draft.dirty[buffer] = false;
-  draft.revision += 1;
 }
 
 /**
@@ -132,16 +95,6 @@ export function applyRemoteScriptAndClearConflict(
     script
   );
   delete state.pendingConflicts[script.id];
-}
-
-/**
- * Sync a draft from remote without clearing conflicts.
- */
-export function applySyncDraftFromRemote(
-  drafts: Record<string, EditorDraft>,
-  script: Userscript
-): void {
-  drafts[script.id] = nextDraftFromRemoteScript(drafts[script.id], script);
 }
 
 /**
@@ -192,17 +145,4 @@ export function applySaveRejectionDirtyRestore(
   draft.dirty[buffer] = true;
   draft.revision += 1;
   return true;
-}
-
-/**
- * Overwrite draft buffers from a successful code save and clear that buffer's dirty.
- */
-export function applySuccessfulCodeSave(
-  draft: EditorDraft,
-  buffer: DraftBuffer,
-  code: string
-): void {
-  draft[buffer] = code;
-  draft.dirty[buffer] = false;
-  draft.revision += 1;
 }

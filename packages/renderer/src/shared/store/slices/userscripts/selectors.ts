@@ -6,13 +6,10 @@ type UserscriptsRoot = { userscripts: UserscriptsState };
 export const selectAllUserscripts = (state: UserscriptsRoot) =>
   state.userscripts.scripts;
 
-export const selectCurrentUserscript = (state: UserscriptsRoot) =>
-  state.userscripts.currentUserscript;
-
-export const selectUserscriptById = (
-  state: UserscriptsRoot,
-  scriptId: string
-) => state.userscripts.scripts[scriptId];
+export const selectCurrentUserscript = (state: UserscriptsRoot) => {
+  const id = state.userscripts.currentScriptId;
+  return id ? state.userscripts.scripts?.[id] : undefined;
+};
 
 export const selectSharedUserscripts = createSelector(
   selectAllUserscripts,

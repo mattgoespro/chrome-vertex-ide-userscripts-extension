@@ -29,9 +29,8 @@
   "editor.fontSize": 12,
   "editor.formatOnPaste": true,
   "editor.formatOnSave": true,
-  "editor.letterSpacing": -0.5,
   "editor.linkedEditing": true,
-  "editor.minimap.autohide": "mouseover",
+  "editor.minimap.autohide": true,
   "editor.minimap.maxColumn": 150,
   "editor.minimap.scale": 3,
   "editor.minimap.showSlider": "mouseover",
@@ -83,7 +82,8 @@
     "**/*.md": true,
     "**/.vscode/**": true,
     "**/dist/**": true,
-    "**/examples/**": true
+    "**/examples/**": true,
+    "pnpm-lock.yaml": true
   },
   "tailwindCSS.includeLanguages": {
     "typescriptreact": "html"
@@ -123,7 +123,7 @@
   "vsicons.dontShowNewVersionMessage": true,
   "window.autoDetectColorScheme": false,
   "workbench.activityBar.orientation": "vertical",
-  "workbench.colorTheme": "Dark Modern",
+  "workbench.colorTheme": "Default Dark+",
   "workbench.editor.closeOnFileDelete": true,
   "workbench.iconTheme": "vscode-icons",
   "workbench.settings.enableNaturalLanguageSearch": true,

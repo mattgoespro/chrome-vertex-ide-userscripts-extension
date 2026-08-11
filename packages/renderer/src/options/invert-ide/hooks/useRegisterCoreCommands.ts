@@ -1,10 +1,8 @@
 import { Command } from "@/shared/command-palette/command.types";
 import { useRegisterCommands } from "@/shared/hooks/useRegisterCommand";
 import { useAppDispatch, useAppSelector } from "@/shared/store/hooks";
-import {
-  setCurrentUserscript,
-  selectAllUserscripts,
-} from "@/shared/store/slices/userscripts";
+import { selectUserscript } from "@/shared/store/select-userscript";
+import { selectAllUserscripts } from "@/shared/store/slices/userscripts";
 import { createUserscript } from "@/shared/store/slices/userscripts/thunks.userscripts";
 import { setActiveSidebarTab } from "@/shared/store/slices/ui";
 import { FileCode2, PackageIcon, PlusIcon, Settings2Icon } from "lucide-react";
@@ -79,7 +77,7 @@ export function useRegisterCoreCommands({
       keywords: ["script", "open", script.name],
       description: `Open ${script.name}`,
       action: () => {
-        dispatch(setCurrentUserscript(script.id));
+        dispatch(selectUserscript(script.id));
         dispatch(setActiveSidebarTab("scripts"));
       },
     }));

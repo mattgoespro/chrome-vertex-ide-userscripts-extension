@@ -1,7 +1,7 @@
 {
   "extends": "../../tsconfig.base.json",
   "files": [],
-  "include": ["src/**/*.ts", "src/**/*.tsx"],
+  "include": ["src/**/*.ts", "src/**/*.tsx", "../shared/src/utils.ts"],
   "compilerOptions": {
     "composite": true,
     "lib": ["es2020", "dom", "dom.iterable", "es2023.array"],

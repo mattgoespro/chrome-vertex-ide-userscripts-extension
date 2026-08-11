@@ -17,12 +17,6 @@ const uiSlice = createSlice({
     setActiveSidebarTab: (state, action: PayloadAction<AppSidebarTab>) => {
       state.activeSidebarTab = action.payload;
     },
-    setSelectedScriptId: (
-      state,
-      action: PayloadAction<string | null | undefined>
-    ) => {
-      state.selectedScriptId = action.payload ?? null;
-    },
     setOutputDrawerCollapsed: (state, action: PayloadAction<boolean>) => {
       state.outputDrawerCollapsed = action.payload;
     },
@@ -72,18 +66,14 @@ const uiSlice = createSlice({
 
 export const {
   setActiveSidebarTab,
-  setSelectedScriptId,
   setOutputDrawerCollapsed,
   setOutputDrawerActiveTab,
   updatePanelSizes,
 } = uiSlice.actions;
 
-export const selectUi = (state: { ui: UiState }) => state.ui;
 export const selectUiHydrated = (state: { ui: UiState }) => state.ui.hydrated;
 export const selectActiveSidebarTab = (state: { ui: UiState }) =>
   state.ui.activeSidebarTab;
-export const selectSelectedScriptId = (state: { ui: UiState }) =>
-  state.ui.selectedScriptId;
 export const selectOutputDrawerCollapsed = (state: { ui: UiState }) =>
   state.ui.outputDrawerCollapsed;
 export const selectOutputDrawerActiveTab = (state: { ui: UiState }) =>

@@ -27,21 +27,10 @@ const popupUserscriptsSlice = createSlice({
         );
       })
       .addCase(toggleUserscript.fulfilled, (state, action) => {
-        applyUserscriptUpdate(state, action.payload.script);
+        state.scripts[action.payload.script.id] = action.payload.script;
       });
   },
 });
-
-function applyUserscriptUpdate(
-  state: UserscriptsState,
-  updatedScript: Userscript
-) {
-  state.scripts[updatedScript.id] = updatedScript;
-
-  if (state.currentUserscript?.id === updatedScript.id) {
-    state.currentUserscript = updatedScript;
-  }
-}
 
 function editorDraftsStubReducer(
   state: EditorDraftsState = editorDraftsInitialState,

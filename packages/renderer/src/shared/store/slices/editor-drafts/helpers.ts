@@ -70,9 +70,19 @@ export function detectDraftConflict(
     typeDefinitions: localDraft.typeDefinitions,
   };
 
-  const conflictingBuffers = dirtyBuffers.filter(
-    (buffer) => localBuffers[buffer] !== remoteBuffers[buffer]
-  );
+  const conflictingBuffers = dirtyBuffers.filter((buffer) => {
+    if (localBuffers[buffer] === remoteBuffers[buffer]) {
+      return false;
+    }
+
+    // Remote still matches the last saved baseline → same-tab metadata echo
+    // (or unrelated field write), not an external content conflict.
+    if (remoteBuffers[buffer] === localDraft.lastSynced[buffer]) {
+      return false;
+    }
+
+    return true;
+  });
 
   if (conflictingBuffers.length === 0) {
     return null;

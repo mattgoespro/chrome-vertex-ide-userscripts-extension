@@ -3,7 +3,7 @@ import * as monaco from "monaco-editor";
 import { useAppDispatch } from "@/shared/store/hooks";
 import { setScriptErrors } from "@/shared/store/slices/workspace";
 import { CompilationError } from "@shared/errors";
-import { v4 as uuid } from "uuid";
+import { uuid } from "@shared/utils";
 
 /**
  * Hook that captures Monaco editor errors and syncs them to Redux store.

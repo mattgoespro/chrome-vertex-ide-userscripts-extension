@@ -8,6 +8,8 @@ import { CodeEditor, CodeEditorProps } from "../../shared/CodeEditor";
  * WorkspaceService, so mounting an editor performs no synchronization and CDN
  * type fetches never block or unmount it.
  */
-export function TypeScriptCodeEditor(props: Omit<CodeEditorProps, "language">) {
+export function TypeScriptCodeEditor(
+  props: Omit<CodeEditorProps, "language">
+) {
   return <CodeEditor {...props} language="typescript" />;
 }

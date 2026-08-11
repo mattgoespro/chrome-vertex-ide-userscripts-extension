@@ -6,14 +6,24 @@ import { describe, it } from "node:test";
  * (Node's test runner loads .mjs without a TS import graph.)
  */
 function expandAffectedScriptIds(scriptIds, scriptsMap) {
-  const seed = new Set(
+  const affected = new Set(
     scriptIds.filter((scriptId) => scriptsMap[scriptId] != null)
   );
-  const affected = new Set(seed);
 
-  for (const script of Object.values(scriptsMap)) {
-    if (script.sharedScripts?.some((sharedId) => seed.has(sharedId))) {
-      affected.add(script.id);
+  let grew = true;
+
+  while (grew) {
+    grew = false;
+
+    for (const script of Object.values(scriptsMap)) {
+      if (affected.has(script.id)) {
+        continue;
+      }
+
+      if (script.sharedScripts?.some((sharedId) => affected.has(sharedId))) {
+        affected.add(script.id);
+        grew = true;
+      }
     }
   }
 
@@ -39,6 +49,17 @@ describe("expandAffectedScriptIds", () => {
 
     const result = expandAffectedScriptIds(["shared"], scriptsMap).sort();
     assert.deepEqual(result, ["consumer", "shared"]);
+  });
+
+  it("includes nested consumers via fixpoint expansion", () => {
+    const scriptsMap = {
+      leaf: { id: "leaf", sharedScripts: [] },
+      mid: { id: "mid", sharedScripts: ["leaf"] },
+      top: { id: "top", sharedScripts: ["mid"] },
+    };
+
+    const result = expandAffectedScriptIds(["leaf"], scriptsMap).sort();
+    assert.deepEqual(result, ["leaf", "mid", "top"]);
   });
 
   it("ignores unknown script ids", () => {

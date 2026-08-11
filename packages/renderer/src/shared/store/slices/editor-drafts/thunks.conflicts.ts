@@ -1,5 +1,5 @@
 import { createAction, createAsyncThunk } from "@reduxjs/toolkit";
-import { saveUserscriptDraft } from "../userscripts/thunks.userscripts";
+import { persistScriptBuffers } from "../userscripts/thunks.userscripts";
 import type { RootState } from "../../store";
 
 /** Keep action types stable with the editorDrafts slice reducers. */
@@ -21,7 +21,7 @@ export const keepLocalConflictAndPersist = createAsyncThunk<
 >(
   "editorDrafts/keepLocalConflictAndPersist",
   async (scriptId, { dispatch }) => {
-    await dispatch(saveUserscriptDraft(scriptId)).unwrap();
+    await dispatch(persistScriptBuffers({ scriptId })).unwrap();
     dispatch(resolveConflictKeepLocal(scriptId));
   }
 );
@@ -36,7 +36,7 @@ export const keepAllLocalConflictsAndPersist = createAsyncThunk<
     const scriptIds = Object.keys(getState().editorDrafts.pendingConflicts);
 
     for (const scriptId of scriptIds) {
-      await dispatch(saveUserscriptDraft(scriptId)).unwrap();
+      await dispatch(persistScriptBuffers({ scriptId })).unwrap();
     }
 
     dispatch(resolveAllConflictsKeepLocal());

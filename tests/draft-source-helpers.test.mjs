@@ -31,6 +31,11 @@ test("getDraftOrSavedSource prefers draft buffers when a draft exists", () => {
               scss: true,
               typeDefinitions: true,
             },
+            lastSynced: {
+              typescript: "export const saved = 1;",
+              scss: ".saved {}",
+              typeDefinitions: "export type Saved = number;",
+            },
             revision: 3,
             lastSaveRequestId: {},
           },

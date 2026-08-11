@@ -1,9 +1,9 @@
 import { registerMonaco } from "@packages/monaco";
 import { createAction, createAsyncThunk } from "@reduxjs/toolkit/react";
-import { updateUserscriptCode } from "../userscripts/thunks.userscripts";
+import { persistScriptBuffers } from "../userscripts/thunks.userscripts";
 import { PrettierFormatter } from "@/sandbox/formatter";
 import { UserscriptSourceLanguage } from "@shared/model";
-import { sendApplyScriptsMessage } from "../userscripts/messaging";
+import type { DraftBuffer } from "../editor-drafts/state.editor-drafts";
 
 export const setIdeReady = createAction<boolean>("code-editor/setIdeReady");
 
@@ -14,6 +14,16 @@ export const initializeMonaco = createAsyncThunk(
   }
 );
 
+function draftBufferForLanguage(
+  language: UserscriptSourceLanguage
+): DraftBuffer {
+  return language === "typescript" ? "typescript" : "scss";
+}
+
+/**
+ * Ctrl+S from a code pane: format the focused buffer, then persist all draft
+ * buffers through the canonical save path (compile + apply).
+ */
 export const saveEditorCode = createAsyncThunk(
   "code-editor/saveEditorCode",
   async (
@@ -36,15 +46,19 @@ export const saveEditorCode = createAsyncThunk(
       formattedCode = await PrettierFormatter.format(code, language);
     }
 
-    await dispatch(
-      updateUserscriptCode({ id: scriptId, language, code: formattedCode })
+    const result = await dispatch(
+      persistScriptBuffers({
+        scriptId,
+        bufferOverrides: {
+          [draftBufferForLanguage(language)]: formattedCode,
+        },
+        applyTabs: true,
+      })
     ).unwrap();
-
-    const applyResult = await sendApplyScriptsMessage([scriptId]);
 
     return {
       code: formattedCode,
-      appliedTabCount: applyResult.appliedTabCount,
+      appliedTabCount: result.appliedTabCount,
     };
   }
 );

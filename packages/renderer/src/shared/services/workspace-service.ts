@@ -29,20 +29,13 @@ import { getDraftBuffer } from "./workspace-sync-plan";
  * Subscribes to the Redux store exactly once and reconciles, debounced and
  * revision-diffed:
  *
- * - Monaco models for the active script, its import/sharedScripts closure,
- *   every shared module, plus any dirty offscreen drafts. Dependency models
- *   are upserted before the consumer so the TS worker does not flash missing
- *   modules.
- * - A static package.json extra lib per script module (all scripts, cheap)
- *   that keeps auto-import emitting canonical scripts/<m>/main specifiers.
- * - Ambient copies of type panes in the closure that are modules.
- * - CDN @types acquisition for the currently open script's global modules,
- *   fully non-blocking.
+ * - Monaco models for the active script, its import closure (derived from
+ *   TypeScript source), every shared module, plus any dirty offscreen drafts.
+ * - Static package.json extra libs, ambient type copies, and CDN @types for
+ *   every configured global module (eager, not scoped to the active script).
  *
- * Editors own the buffers of attached models; drafts flow back through
- * onDidChangeContent. The service only overwrites an attached buffer when its
- * draft is clean (for example storage-sync take-remote), so a stale store
- * value can never clobber in-progress typing.
+ * Editors own attached buffers. The service only overwrites an attached buffer
+ * when that buffer's draft is clean (e.g. storage-sync take-remote).
  */
 
 const SYNC_DEBOUNCE_MS = 50;
@@ -56,6 +49,13 @@ function selectSharedModuleInfos(
       moduleName: getScriptModulePath(script),
       scriptName: script.name,
     }));
+}
+
+function selectCurrentScript(state: RootState) {
+  const currentScriptId = state.userscripts.currentScriptId;
+  return currentScriptId
+    ? (state.userscripts.scripts?.[currentScriptId] ?? undefined)
+    : undefined;
 }
 
 let running = false;
@@ -75,11 +75,7 @@ export function startWorkspaceService(store: AppStore): () => void {
 
   let scheduled: ReturnType<typeof setTimeout> | null = null;
   let lastSignature = "";
-  let lastCurrentScriptId =
-    store.getState().userscripts.currentUserscript?.id ?? null;
-  let lastSharedScriptsSignature = JSON.stringify(
-    store.getState().userscripts.currentUserscript?.sharedScripts ?? []
-  );
+  let lastCurrentScriptId = store.getState().userscripts.currentScriptId ?? null;
 
   const sync = () => {
     scheduled = null;
@@ -88,7 +84,7 @@ export function startWorkspaceService(store: AppStore): () => void {
     const scriptsMap = state.userscripts.scripts ?? {};
     const scripts = Object.values(scriptsMap);
     const drafts = state.editorDrafts.drafts;
-    const currentScript = state.userscripts.currentUserscript;
+    const currentScript = selectCurrentScript(state);
     const modules = state.modules.modules ?? {};
 
     const closureIds = resolveWorkspaceScriptClosure(currentScript, scriptsMap, {
@@ -122,6 +118,8 @@ export function startWorkspaceService(store: AppStore): () => void {
       }
     }
 
+    // Signature tracks draft revision + TypeScript text (import edges), not
+    // the persisted sharedScripts cache.
     const signature = JSON.stringify([
       workspaceIds.map((scriptId) => {
         const script = scriptsMap[scriptId];
@@ -134,12 +132,10 @@ export function startWorkspaceService(store: AppStore): () => void {
           script ? getScriptModulePath(script) : "",
           script?.updatedAt ?? 0,
           drafts[scriptId]?.revision ?? -1,
-          script?.sharedScripts ?? [],
           typescript,
         ];
       }),
       currentScript?.id,
-      currentScript?.globalModules,
       Object.values(modules).map((module) => [module.id, module.packageName]),
     ]);
 
@@ -218,13 +214,13 @@ export function startWorkspaceService(store: AppStore): () => void {
     syncWorkspaceModels(files);
     syncAmbientTypeDefinitionLibs(ambientLibs);
 
-    const cdnModules = (currentScript?.globalModules ?? []).flatMap((id) => {
-      const module = modules[id];
-
-      return module?.packageName
+    // Eagerly register @types for every configured CDN module so switching
+    // scripts never tears libs down and re-fetches (which flashes diagnostics).
+    const cdnModules = Object.values(modules).flatMap((module) =>
+      module.packageName
         ? [{ id: module.id, packageName: module.packageName }]
-        : [];
-    });
+        : []
+    );
 
     void syncCdnModuleLibs(cdnModules).catch((error) => {
       console.warn("CDN type acquisition failed:", error);
@@ -232,18 +228,10 @@ export function startWorkspaceService(store: AppStore): () => void {
   };
 
   const unsubscribe = store.subscribe(() => {
-    const current = store.getState().userscripts.currentUserscript;
-    const nextId = current?.id ?? null;
-    const nextSharedScriptsSignature = JSON.stringify(
-      current?.sharedScripts ?? []
-    );
+    const nextId = store.getState().userscripts.currentScriptId ?? null;
 
-    if (
-      nextId !== lastCurrentScriptId ||
-      nextSharedScriptsSignature !== lastSharedScriptsSignature
-    ) {
+    if (nextId !== lastCurrentScriptId) {
       lastCurrentScriptId = nextId;
-      lastSharedScriptsSignature = nextSharedScriptsSignature;
 
       if (scheduled != null) {
         clearTimeout(scheduled);

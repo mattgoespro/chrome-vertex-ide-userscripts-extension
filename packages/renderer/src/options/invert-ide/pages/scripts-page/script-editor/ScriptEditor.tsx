@@ -46,7 +46,8 @@ export function ScriptEditor() {
   const ideReady = useAppSelector(selectIdeReady);
   const monacoReady = useAppSelector(selectMonacoReady);
   const settings = useAppSelector(selectEditorSettings);
-  const draft = useAppSelector(selectDraftForScript(script.id));
+  const scriptId = script?.id ?? "";
+  const draft = useAppSelector(selectDraftForScript(scriptId));
   const panelSizes = useAppSelector(selectPanelSizes);
   const outputDrawerCollapsed = useAppSelector(selectOutputDrawerCollapsed);
 
@@ -74,26 +75,36 @@ export function ScriptEditor() {
   const tsPreviewGenerationRef = useRef(0);
   const scssPreviewGenerationRef = useRef(0);
 
-  const typescriptSource = draft?.typescript ?? script.code.source.typescript;
-  const scssSource = draft?.scss ?? script.code.source.scss;
-  const typeDefinitions = draft?.typeDefinitions ?? script.typeDefinitions;
+  const typescriptSource =
+    draft?.typescript ?? script?.code.source.typescript ?? "";
+  const scssSource = draft?.scss ?? script?.code.source.scss ?? "";
+  const typeDefinitions =
+    draft?.typeDefinitions ?? script?.typeDefinitions ?? "";
 
-  useEditorErrorTracking(script.id, tsModel, "typescript");
-  useEditorErrorTracking(script.id, typeDefinitionModel, "type-definition");
-  useEditorErrorTracking(script.id, scssModel, "scss");
+  useEditorErrorTracking(scriptId, tsModel, "typescript");
+  useEditorErrorTracking(scriptId, typeDefinitionModel, "type-definition");
+  useEditorErrorTracking(scriptId, scssModel, "scss");
 
   useEffect(() => {
+    if (!script) {
+      return;
+    }
+
     dispatch(ensureDraft(script));
-  }, [dispatch, script.id]);
+  }, [dispatch, script]);
 
   // Seed drawer from last saved compile; live preview only runs when open.
   useEffect(() => {
+    if (!script) {
+      return;
+    }
+
     setLiveJs(script.code.compiled.javascript ?? "");
     setLiveCss(script.code.compiled.css ?? "");
-  }, [script.id, script.code.compiled.javascript, script.code.compiled.css]);
+  }, [script]);
 
   useEffect(() => {
-    if (isDrawerCollapsed) {
+    if (!script || isDrawerCollapsed) {
       return;
     }
 
@@ -127,15 +138,12 @@ export function ScriptEditor() {
   }, [
     isDrawerCollapsed,
     typescriptSource,
-    script.shared,
-    script.moduleName,
-    script.sharedScripts,
+    script,
     settings.minifyCompiledOutput,
-    script.id,
   ]);
 
   useEffect(() => {
-    if (isDrawerCollapsed) {
+    if (!script || isDrawerCollapsed) {
       return;
     }
 
@@ -169,9 +177,13 @@ export function ScriptEditor() {
 
   const flushDraftBuffer = useCallback(
     (buffer: EditorBuffer, code: string) => {
-      dispatch(updateDraftBuffer({ scriptId: script.id, buffer, code }));
+      if (!scriptId) {
+        return;
+      }
+
+      dispatch(updateDraftBuffer({ scriptId, buffer, code }));
     },
-    [dispatch, script.id]
+    [dispatch, scriptId]
   );
 
   const onCodeModified = (buffer: EditorBuffer, code: string) => {
@@ -200,25 +212,15 @@ export function ScriptEditor() {
     dispatch(setOutputDrawerCollapsed(collapsed));
   };
 
+  if (!script) {
+    return null;
+  }
+
   return (
     <div className="flex h-full min-w-0 flex-col overflow-hidden">
       <div className="flex min-w-0 items-center gap-sm border-b border-border bg-surface-raised p-sm px-md">
         <ScriptMetadata key={script.id} script={script} />
       </div>
-      {(!script.enabled || (script.urlPatterns?.length ?? 0) === 0) && (
-        <div
-          className="flex shrink-0 items-start gap-sm border-b border-accent-border bg-accent-subtle px-md py-sm"
-          data-testid="script-setup-banner"
-        >
-          <Typography
-            variant="caption"
-            className="font-mono text-text-muted-strong"
-          >
-            This script will not run until it has URL patterns and is enabled.
-            Add a pattern above, then flip the switch in the script list.
-          </Typography>
-        </div>
-      )}
       <div className="min-h-0 min-w-0 flex-1 overflow-hidden">
         {ideReady && monacoReady ? (
           <Group
@@ -226,8 +228,7 @@ export function ScriptEditor() {
             id="script-editor-outer-panels"
             defaultLayout={{
               "source-panels": panelSizes.scriptCompiledOutputDrawerSplit,
-              "output-drawer":
-                100 - panelSizes.scriptCompiledOutputDrawerSplit,
+              "output-drawer": 100 - panelSizes.scriptCompiledOutputDrawerSplit,
             }}
             onLayoutChanged={(layout) => {
               if (drawerPanelRef.current?.isCollapsed()) {

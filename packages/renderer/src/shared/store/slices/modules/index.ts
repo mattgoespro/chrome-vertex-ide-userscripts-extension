@@ -19,9 +19,6 @@ const modulesSlice = createSlice({
     selectModules(state: ModulesState) {
       return state.modules;
     },
-    selectIsModulesLoaded(state: ModulesState) {
-      return state.isLoaded;
-    },
     selectEnabledModules(state: ModulesState) {
       return selectEnabledModulesMemo(state);
     },
@@ -31,7 +28,6 @@ const modulesSlice = createSlice({
     builder
       .addCase(loadModules.fulfilled, (state, action) => {
         state.modules = action.payload;
-        state.isLoaded = true;
       })
       .addCase(addModule.fulfilled, (state, action) => {
         state.modules[action.payload.id] = action.payload;
@@ -45,8 +41,7 @@ const modulesSlice = createSlice({
   },
 });
 
-export const { selectModules, selectIsModulesLoaded, selectEnabledModules } =
-  modulesSlice.selectors;
+export const { selectModules, selectEnabledModules } = modulesSlice.selectors;
 
 export { loadModules, addModule, updateModule, deleteModule };
 

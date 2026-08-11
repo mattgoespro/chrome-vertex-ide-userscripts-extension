@@ -7,6 +7,11 @@ export type EditorDraft = {
   scss: string;
   typeDefinitions: string;
   dirty: Record<DraftBuffer, boolean>;
+  /**
+   * Last known saved/remote values per buffer. Conflict detection treats a
+   * storage echo as benign when remote still matches these baselines.
+   */
+  lastSynced: Record<DraftBuffer, string>;
   revision: number;
   /** Request id of the most recent commitDraftForSave per buffer. */
   lastSaveRequestId: Partial<Record<DraftBuffer, string>>;
@@ -36,14 +41,23 @@ export const initialState: EditorDraftsState = {
 };
 
 export function draftFromScript(script: Userscript): EditorDraft {
+  const typescript = script.code.source.typescript;
+  const scss = script.code.source.scss;
+  const typeDefinitions = script.typeDefinitions ?? "";
+
   return {
-    typescript: script.code.source.typescript,
-    scss: script.code.source.scss,
-    typeDefinitions: script.typeDefinitions ?? "",
+    typescript,
+    scss,
+    typeDefinitions,
     dirty: {
       typescript: false,
       scss: false,
       typeDefinitions: false,
+    },
+    lastSynced: {
+      typescript,
+      scss,
+      typeDefinitions,
     },
     revision: 0,
     lastSaveRequestId: {},

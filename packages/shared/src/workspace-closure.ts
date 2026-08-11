@@ -5,7 +5,8 @@ import { getSharedImportModuleNames } from "./shared-module-imports";
 export type WorkspaceClosureOptions = {
   /**
    * Optional source provider (e.g. draft buffer). Defaults to saved TypeScript.
-   * Used so Monaco keeps models for imports even when `sharedScripts` is stale.
+   * Closure edges are always derived from imports in this source — persisted
+   * `sharedScripts` is only a save-time cache for the service worker.
    */
   getTypescriptSource?: (script: Userscript) => string;
 };
@@ -14,9 +15,9 @@ export type WorkspaceClosureOptions = {
  * Resolve the set of script IDs that should have Monaco models for IntelliSense:
  * the active script plus its transitive shared-dependency closure.
  *
- * Edges come from both persisted `sharedScripts` and `scripts/<module>/main`
- * imports in TypeScript source (draft or saved), so IntelliSense does not depend
- * on a prior save having refreshed `sharedScripts`.
+ * Edges come from `scripts/<module>/main` imports in TypeScript source (draft
+ * or saved). Persisted `sharedScripts` is ignored here so IntelliSense tracks
+ * unsaved import edits.
  *
  * Order is dependency-first (post-order DFS) so workspace sync can upsert
  * shared modules before the consumer that imports them.
@@ -59,10 +60,6 @@ export function resolveWorkspaceScriptClosure(
     }
 
     seen.add(scriptId);
-
-    for (const sharedId of script.sharedScripts ?? []) {
-      visit(sharedId);
-    }
 
     for (const modulePath of getSharedImportModuleNames(getSource(script))) {
       const dependencyId = sharedByModulePath.get(modulePath);

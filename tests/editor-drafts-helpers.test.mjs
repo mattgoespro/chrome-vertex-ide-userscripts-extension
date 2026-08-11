@@ -7,7 +7,7 @@ import {
 import { buildUserscriptFixture } from "./helpers/chrome-sync-mock.mjs";
 
 function buildDraft(overrides = {}) {
-  return {
+  const base = {
     typescript: "export const local = 1;",
     scss: "",
     typeDefinitions: "",
@@ -16,9 +16,29 @@ function buildDraft(overrides = {}) {
       scss: false,
       typeDefinitions: false,
     },
+    lastSynced: {
+      typescript: "export const local = 1;",
+      scss: "",
+      typeDefinitions: "",
+    },
     revision: 1,
-    ...overrides,
   };
+
+  const merged = { ...base, ...overrides };
+
+  if (overrides.dirty) {
+    merged.dirty = { ...base.dirty, ...overrides.dirty };
+  }
+
+  if (!overrides.lastSynced) {
+    merged.lastSynced = {
+      typescript: merged.typescript,
+      scss: merged.scss,
+      typeDefinitions: merged.typeDefinitions,
+    };
+  }
+
+  return merged;
 }
 
 test("detectDraftConflict returns null when no buffers are dirty", () => {
@@ -50,6 +70,26 @@ test("detectDraftConflict returns null when dirty buffers already match remote",
   assert.equal(detectDraftConflict("script-1", draft, remote), null);
 });
 
+test("detectDraftConflict returns null when remote still matches lastSynced baseline", () => {
+  const remote = buildUserscriptFixture({
+    code: {
+      source: { typescript: "export const local = 1;", scss: "" },
+      compiled: { javascript: "", css: "" },
+    },
+  });
+  const draft = buildDraft({
+    typescript: "export const local = 1;\n// edit",
+    dirty: { typescript: true, scss: false, typeDefinitions: false },
+    lastSynced: {
+      typescript: "export const local = 1;",
+      scss: "",
+      typeDefinitions: "",
+    },
+  });
+
+  assert.equal(detectDraftConflict("script-1", draft, remote), null);
+});
+
 test("detectDraftConflict reports only dirty buffers that differ from remote", () => {
   const remote = buildUserscriptFixture({
     name: "Remote Script",
@@ -70,6 +110,11 @@ test("detectDraftConflict reports only dirty buffers that differ from remote", (
       typescript: true,
       scss: false,
       typeDefinitions: true,
+    },
+    lastSynced: {
+      typescript: "export const local = 1;",
+      scss: ".local {}",
+      typeDefinitions: "export type Local = string;",
     },
   });
 

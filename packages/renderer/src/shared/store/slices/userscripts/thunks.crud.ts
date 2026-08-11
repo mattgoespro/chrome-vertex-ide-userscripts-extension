@@ -5,7 +5,7 @@ import {
   normalizeUserscript,
   toStorageSafeUserscript,
 } from "@shared/userscript-hydrate";
-import { uuid } from "@/shared/utils";
+import { uuid } from "@shared/utils";
 import { sendSetEnabledMessage } from "./messaging";
 import { DefaultNewUserscriptName } from "./state.userscripts";
 

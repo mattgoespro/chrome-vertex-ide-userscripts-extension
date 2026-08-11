@@ -1,21 +1,14 @@
-import { CompilationError } from "@shared/errors";
+import type { CompilationError } from "@shared/errors";
 
-type ScriptErrorMap = Partial<
-  Record<CompilationError["language"], CompilationError[]>
->;
+type CompilationErrorLanguage = CompilationError["language"];
 
 export interface WorkspaceState {
-  /**
-   * Errors by userscript ID
-   */
-  scriptErrors: Record<string, ScriptErrorMap>;
-  /**
-   * Currently visible userscript errors in the error panel.
-   */
-  visibleScriptId: string | null;
+  scriptErrors: Record<
+    string,
+    Partial<Record<CompilationErrorLanguage, CompilationError[]>>
+  >;
 }
 
 export const initialState: WorkspaceState = {
   scriptErrors: {},
-  visibleScriptId: null,
 };

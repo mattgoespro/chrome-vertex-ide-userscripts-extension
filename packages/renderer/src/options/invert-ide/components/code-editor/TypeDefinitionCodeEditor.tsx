@@ -1,6 +1,6 @@
 import { PrettierFormatter } from "@/sandbox/formatter";
 import { useAppDispatch } from "@/shared/store/hooks";
-import { updateUserscriptTypeDefinitions } from "@/shared/store/slices/userscripts/thunks.userscripts";
+import { persistScriptBuffers } from "@/shared/store/slices/userscripts/thunks.userscripts";
 import { CodeEditor, CodeEditorProps } from "../../shared/CodeEditor";
 
 export function TypeDefinitionCodeEditor(
@@ -22,9 +22,12 @@ export function TypeDefinitionCodeEditor(
         }
 
         await dispatch(
-          updateUserscriptTypeDefinitions({
-            id: scriptId,
-            typeDefinitions: formattedCode,
+          persistScriptBuffers({
+            scriptId,
+            bufferOverrides: { typeDefinitions: formattedCode },
+            // Type-only saves historically did not recompile or re-inject.
+            applyTabs: false,
+            compile: false,
           })
         ).unwrap();
 

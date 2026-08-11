@@ -14,7 +14,6 @@ import {
   loadUserscripts,
   rebuildCompiledUserscripts,
 } from "@/shared/store/slices/userscripts/thunks.userscripts";
-import { setCurrentUserscript } from "@/shared/store/slices/userscripts";
 import {
   selectActiveSidebarTab,
   setActiveSidebarTab,
@@ -28,27 +27,6 @@ import { ModulesPage } from "./pages/modules-page/ModulesPage";
 import { ScriptsPage } from "./pages/scripts-page/ScriptsPage";
 import { Settings } from "./pages/settings-page/SettingsPage";
 import { useRegisterCoreCommands } from "./hooks/useRegisterCoreCommands";
-
-function restoreInitialUserscriptSelection(dispatch: ReturnType<typeof useAppDispatch>) {
-  const state = store.getState();
-
-  if (state.userscripts.currentUserscript) {
-    return;
-  }
-
-  const scripts = state.userscripts.scripts ?? {};
-  const scriptIds = Object.keys(scripts);
-
-  if (scriptIds.length === 0) {
-    return;
-  }
-
-  const restoredId = state.ui.selectedScriptId;
-  const targetId =
-    restoredId && scripts[restoredId] ? restoredId : scriptIds[0];
-
-  dispatch(setCurrentUserscript(targetId));
-}
 
 export function InvertIde() {
   const dispatch = useAppDispatch();
@@ -69,7 +47,7 @@ export function InvertIde() {
 
   useEffect(() => {
     SassCompiler.initialize();
-    void initializeBuildWorker();
+    initializeBuildWorker();
 
     let stopWorkspaceService: (() => void) | undefined;
 
@@ -84,7 +62,7 @@ export function InvertIde() {
           dispatch(loadModules()).unwrap(),
         ]);
 
-        restoreInitialUserscriptSelection(dispatch);
+        // Selection restore is owned by the loadUserscripts.fulfilled listener.
 
         // Single owner of store → Monaco sync: active script + shared-dep
         // closure models, module package.json entries, ambient/CDN libs.

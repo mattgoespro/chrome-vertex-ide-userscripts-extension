@@ -92,7 +92,28 @@ describe("decideStorageSyncAction", () => {
     assert.equal(decision.conflict.buffers[0].buffer, "typescript");
   });
 
-  it("syncs when dirty buffers match remote (no true conflict)", () => {
+  it("syncs entity from remote when dirty and remote still matches lastSynced", () => {
+    const script = buildUserscriptFixture({
+      id: "s1",
+      name: "Renamed",
+      code: {
+        source: { typescript: "export const v = 1;", scss: "" },
+        compiled: { javascript: "", css: "" },
+      },
+    });
+    const draft = dirtyDraft(script, "typescript");
+
+    const decision = decideStorageSyncAction("s1", draft, script);
+    assert.equal(decision.action, "sync-entity");
+    // Entity keeps the remote/persisted snapshot — not the dirty draft buffer.
+    assert.equal(
+      decision.script.code.source.typescript,
+      "export const v = 1;"
+    );
+    assert.equal(decision.script.name, "Renamed");
+  });
+
+  it("syncs entity when dirty buffers already match remote", () => {
     const remote = buildUserscriptFixture({
       id: "s1",
       code: {
@@ -104,6 +125,10 @@ describe("decideStorageSyncAction", () => {
     draft.dirty.typescript = true;
 
     const decision = decideStorageSyncAction("s1", draft, remote);
-    assert.equal(decision.action, "sync");
+    assert.equal(decision.action, "sync-entity");
+    assert.equal(
+      decision.script.code.source.typescript,
+      "export const same = 1;"
+    );
   });
 });

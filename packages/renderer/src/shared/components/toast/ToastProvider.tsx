@@ -1,5 +1,5 @@
 import { createContext, useCallback, useContext, useState } from "react";
-import { uuid } from "@/shared/utils";
+import { uuid } from "@shared/utils";
 import { ToastContainer } from "./ToastContainer";
 import type { ToastItem, ToastOptions } from "./model";
 

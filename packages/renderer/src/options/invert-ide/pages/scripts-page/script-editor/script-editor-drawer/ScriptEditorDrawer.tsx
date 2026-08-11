@@ -51,7 +51,7 @@ export function ScriptEditorDrawer({
       className="flex h-full flex-col overflow-hidden"
       barClassName="shrink-0 h-9 pl-md pr-xs bg-surface-raised border-b border-border"
     >
-      <TabListTitle>{"// problems"}</TabListTitle>
+      <TabListTitle>{"// output"}</TabListTitle>
       <Tab
         active={activeTab === "errors"}
         onClick={() => onTabChange("errors")}

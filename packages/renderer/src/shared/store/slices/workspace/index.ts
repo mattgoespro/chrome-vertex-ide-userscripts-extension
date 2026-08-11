@@ -20,18 +20,8 @@ const flattenScriptErrors = (
 
 const selectScriptErrorsMemo = createSelector(
   [(state: WorkspaceState, scriptId: string) => state.scriptErrors[scriptId]],
-  (errorsByLanguage): CompilationError[] => flattenScriptErrors(errorsByLanguage)
-);
-
-const selectAllErrorsMemo = createSelector(
-  [(state: WorkspaceState) => state.scriptErrors],
-  (scriptErrors): CompilationError[] => {
-    const errors = Object.values(scriptErrors).flatMap((errorsByLanguage) =>
-      flattenScriptErrors(errorsByLanguage)
-    );
-
-    return errors.length > 0 ? errors : EMPTY_ERRORS;
-  }
+  (errorsByLanguage): CompilationError[] =>
+    flattenScriptErrors(errorsByLanguage)
 );
 
 const workspaceSlice = createSlice({
@@ -51,41 +41,20 @@ const workspaceSlice = createSlice({
       scriptErrors[action.payload.language] = action.payload.errors;
       state.scriptErrors[action.payload.scriptId] = scriptErrors;
     },
-    clearScriptErrors: (state, action: PayloadAction<string>) => {
-      delete state.scriptErrors[action.payload];
-    },
-    setVisibleScriptId: (state, action: PayloadAction<string | null>) => {
-      state.visibleScriptId = action.payload;
-    },
   },
   selectors: {
     selectScriptErrors: (state, scriptId: string) => {
       return selectScriptErrorsMemo(state, scriptId);
     },
-    selectAllErrors: (state) => {
-      return selectAllErrorsMemo(state);
-    },
     selectErrorCount: (state, scriptId: string) => {
       return selectScriptErrorsMemo(state, scriptId).length;
-    },
-    selectVisibleErrors: (state) => {
-      if (!state.visibleScriptId) {
-        return EMPTY_ERRORS;
-      }
-
-      return selectScriptErrorsMemo(state, state.visibleScriptId);
     },
   },
 });
 
-export const { setScriptErrors, clearScriptErrors, setVisibleScriptId } =
-  workspaceSlice.actions;
+export const { setScriptErrors } = workspaceSlice.actions;
 
-export const {
-  selectScriptErrors,
-  selectAllErrors,
-  selectErrorCount,
-  selectVisibleErrors,
-} = workspaceSlice.selectors;
+export const { selectScriptErrors, selectErrorCount } =
+  workspaceSlice.selectors;
 
 export default workspaceSlice.reducer;

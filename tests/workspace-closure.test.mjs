@@ -1,87 +1,9 @@
 import assert from "node:assert/strict";
 import { describe, it } from "node:test";
-
-/**
- * Mirrors packages/shared/src/workspace-closure.ts — keep in sync when changing
- * closure resolution.
- */
-function getScriptModulePath(script) {
-  const trimmed = script.moduleName?.trim() ?? "";
-  const sanitized = trimmed
-    .toLowerCase()
-    .replace(/[^a-z0-9]+/g, "-")
-    .replace(/^-|-$/g, "");
-  return sanitized || script.id;
-}
-
-const SCRIPTS_MAIN_SPECIFIER =
-  /^\s*(?:import|export)(?![\s\S]*\btype\s+only\b)(?!\s*type\b)[^\n]*?\bfrom\s*["']scripts\/([^/"']+)\/main["']/gm;
-
-function getSharedImportModuleNames(sourceCode) {
-  const names = new Set();
-  for (const match of sourceCode.matchAll(SCRIPTS_MAIN_SPECIFIER)) {
-    if (match[1]) {
-      names.add(match[1]);
-    }
-  }
-  return [...names];
-}
-
-function resolveWorkspaceScriptClosure(currentScript, scriptsMap, options) {
-  if (!currentScript || !scriptsMap[currentScript.id]) {
-    return [];
-  }
-
-  const getSource =
-    options?.getTypescriptSource ??
-    ((script) => script.code?.source?.typescript ?? "");
-
-  const sharedByModulePath = new Map();
-  for (const candidate of Object.values(scriptsMap)) {
-    if (!candidate.shared) {
-      continue;
-    }
-    sharedByModulePath.set(getScriptModulePath(candidate), candidate.id);
-  }
-
-  const seen = new Set();
-  const ordered = [];
-
-  const visit = (scriptId) => {
-    if (seen.has(scriptId)) {
-      return;
-    }
-
-    const script = scriptsMap[scriptId];
-    if (!script) {
-      return;
-    }
-
-    seen.add(scriptId);
-
-    for (const sharedId of script.sharedScripts ?? []) {
-      visit(sharedId);
-    }
-
-    for (const modulePath of getSharedImportModuleNames(getSource(script))) {
-      const dependencyId = sharedByModulePath.get(modulePath);
-      if (dependencyId) {
-        visit(dependencyId);
-      }
-    }
-
-    ordered.push(scriptId);
-  };
-
-  visit(currentScript.id);
-  return ordered;
-}
-
-function listSharedScriptIds(scriptsMap) {
-  return Object.values(scriptsMap)
-    .filter((script) => script.shared)
-    .map((script) => script.id);
-}
+import {
+  listSharedScriptIds,
+  resolveWorkspaceScriptClosure,
+} from "../packages/shared/src/workspace-closure.ts";
 
 describe("resolveWorkspaceScriptClosure", () => {
   it("returns only the active script when it has no deps", () => {
@@ -106,27 +28,36 @@ describe("resolveWorkspaceScriptClosure", () => {
     );
   });
 
-  it("puts transitive dependencies before the active script", () => {
+  it("puts transitive dependencies before the active script (from imports)", () => {
     const scriptsMap = {
       shared: {
         id: "shared",
         shared: true,
         moduleName: "shared",
         sharedScripts: [],
-        code: { source: { typescript: "" } },
+        code: { source: { typescript: "export const x = 1;" } },
       },
       nested: {
         id: "nested",
         shared: true,
         moduleName: "nested",
-        sharedScripts: ["shared"],
-        code: { source: { typescript: "" } },
+        // Persisted cache deliberately stale / empty — closure uses imports.
+        sharedScripts: [],
+        code: {
+          source: {
+            typescript: `import { x } from "scripts/shared/main";\nexport const y = x;`,
+          },
+        },
       },
       consumer: {
         id: "consumer",
         shared: false,
-        sharedScripts: ["nested"],
-        code: { source: { typescript: "" } },
+        sharedScripts: [],
+        code: {
+          source: {
+            typescript: `import { y } from "scripts/nested/main";\nexport {};`,
+          },
+        },
       },
       other: {
         id: "other",
@@ -166,6 +97,29 @@ describe("resolveWorkspaceScriptClosure", () => {
     assert.deepEqual(
       resolveWorkspaceScriptClosure(scriptsMap.consumer, scriptsMap),
       ["logger", "consumer"]
+    );
+  });
+
+  it("ignores persisted sharedScripts that are not imported", () => {
+    const scriptsMap = {
+      unused: {
+        id: "unused",
+        shared: true,
+        moduleName: "unused",
+        sharedScripts: [],
+        code: { source: { typescript: "export const u = 1;" } },
+      },
+      consumer: {
+        id: "consumer",
+        shared: false,
+        sharedScripts: ["unused"],
+        code: { source: { typescript: "export const c = 1;" } },
+      },
+    };
+
+    assert.deepEqual(
+      resolveWorkspaceScriptClosure(scriptsMap.consumer, scriptsMap),
+      ["consumer"]
     );
   });
 

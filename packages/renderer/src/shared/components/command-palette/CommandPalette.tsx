@@ -132,7 +132,7 @@ export function CommandPalette({ open, onClose }: CommandPaletteProps) {
         ref={paletteRef}
         role="dialog"
         aria-label="Command palette"
-        className="flex w-full max-w-[600px] animate-dialog-enter flex-col overflow-hidden rounded-[6px] border border-border bg-surface-raised shadow-[0_16px_48px_rgba(0,0,0,0.55)]"
+        className="flex w-full max-w-150 animate-dialog-enter flex-col overflow-hidden rounded-md border border-border bg-surface-raised shadow-[0_16px_48px_rgba(0,0,0,0.55)]"
         onKeyDown={handleKeyDown}
       >
         <CommandPaletteInput

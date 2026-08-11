@@ -1,10 +1,15 @@
 import { createAsyncThunk } from "@reduxjs/toolkit/react";
 import { isCompiledCodeBuildCurrent } from "@shared/compile-metadata";
 import type { Userscript } from "@shared/model";
-import { ChromeSyncStorage, CompiledCodeStorage } from "@shared/storage";
+import { resolveSharedScriptIdsFromSourceOrThrow } from "@shared/resolve-shared-scripts";
+import {
+  ChromeSyncStorage,
+  CompiledCodeStorage,
+} from "@shared/storage";
 import {
   mergeCompiledCode,
   normalizeUserscript,
+  toStorageSafeUserscript,
 } from "@shared/userscript-hydrate";
 import type { RootState } from "../../store";
 import { compileAllOutputsOrThrow, getBuildOptions } from "./compile-helpers";
@@ -45,10 +50,40 @@ export const rebuildCompiledUserscripts = createAsyncThunk<
   const rebuiltScripts: Userscript[] = [];
 
   for (const script of scriptsToRebuild) {
+    const previousSharedScripts = script.sharedScripts ?? [];
+
+    try {
+      script.sharedScripts = resolveSharedScriptIdsFromSourceOrThrow(
+        script,
+        scriptsMap,
+        script.code.source.typescript
+      );
+    } catch (error) {
+      console.warn(
+        `Failed to re-resolve sharedScripts for "${script.name}" during rebuild:`,
+        error
+      );
+    }
+
     const compiledEntry = await compileAllOutputsOrThrow(script, state);
     const updatedScript = mergeCompiledCode(script, compiledEntry);
 
     await CompiledCodeStorage.saveCompiledCode(script.id, compiledEntry);
+
+    const nextSharedScripts = updatedScript.sharedScripts ?? [];
+    const sharedScriptsChanged =
+      previousSharedScripts.length !== nextSharedScripts.length ||
+      previousSharedScripts.some(
+        (sharedId, index) => sharedId !== nextSharedScripts[index]
+      );
+
+    if (sharedScriptsChanged) {
+      await ChromeSyncStorage.updateScript(
+        script.id,
+        toStorageSafeUserscript(updatedScript)
+      );
+    }
+
     rebuiltScripts.push(updatedScript);
   }
 

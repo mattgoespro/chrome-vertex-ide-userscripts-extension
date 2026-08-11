@@ -10,9 +10,11 @@ import {
 } from "@/shared/components/panel/Panel";
 import { Select } from "@/shared/components/select/Select";
 import { useAppSelector } from "@/shared/store/hooks";
+import { getDraftOrSavedSource } from "@/shared/store/slices/editor-drafts";
 import { selectEnabledModules } from "@/shared/store/slices/modules";
 import { selectSharedUserscripts } from "@/shared/store/slices/userscripts";
-import { sanitizeModuleName, Userscript } from "@shared/model";
+import { getScriptModulePath, sanitizeModuleName, Userscript } from "@shared/model";
+import { getSharedImportModuleNames } from "@shared/shared-module-imports";
 import {
   EllipsisVerticalIcon,
   GitForkIcon,
@@ -22,7 +24,7 @@ import {
   Trash2Icon,
   WandSparklesIcon,
 } from "lucide-react";
-import { useCallback, useEffect, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { cva } from "class-variance-authority";
 
 const optionsTriggerVariants = cva(
@@ -70,6 +72,9 @@ export function OptionsPanel({
   const [open, setOpen] = useState(false);
   const globalModules = useAppSelector(selectEnabledModules);
   const sharedScripts = useAppSelector(selectSharedUserscripts);
+  const draftTypescript = useAppSelector(
+    (state) => getDraftOrSavedSource(state, script.id).typescript
+  );
   const wrapperRef = useRef<HTMLDivElement>(null);
   const moduleInputRef = useRef<HTMLInputElement>(null);
 
@@ -105,9 +110,15 @@ export function OptionsPanel({
     }
   };
 
-  const currentSharedDependencies = sharedScripts.filter((sharedScript) =>
-    (script.sharedScripts ?? []).includes(sharedScript.id)
-  );
+  // Derive live import deps from draft/saved TypeScript — not the persisted
+  // sharedScripts cache (that only updates on save for the service worker).
+  const currentSharedDependencies = useMemo(() => {
+    const importedPaths = new Set(getSharedImportModuleNames(draftTypescript));
+
+    return sharedScripts.filter((sharedScript) =>
+      importedPaths.has(getScriptModulePath(sharedScript))
+    );
+  }, [draftTypescript, sharedScripts]);
 
   return (
     <div className="relative shrink-0" ref={wrapperRef}>

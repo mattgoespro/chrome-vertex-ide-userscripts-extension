@@ -46,15 +46,10 @@ function flushUiState(ui: UiState) {
 }
 
 function restoreSelectedUserscript(listenerApi: {
-  dispatch: AppDispatch;
-  getState: () => RootState;
+  dispatch: (action: unknown) => void;
+  getState: () => unknown;
 }) {
-  const state = listenerApi.getState();
-
-  if (state.userscripts.currentUserscript) {
-    return;
-  }
-
+  const state = listenerApi.getState() as RootState;
   const scripts = state.userscripts.scripts ?? {};
   const scriptIds = Object.keys(scripts);
 
@@ -62,9 +57,28 @@ function restoreSelectedUserscript(listenerApi: {
     return;
   }
 
+  const currentId = state.userscripts.currentScriptId;
+
+  // loadUserscripts.fulfilled clears currentScriptId when the prior id is gone;
+  // only select when nothing valid is current.
+  if (currentId && scripts[currentId]) {
+    const current = scripts[currentId];
+
+    if (current && !state.editorDrafts.drafts[currentId]) {
+      listenerApi.dispatch(ensureDraft(current));
+    }
+
+    return;
+  }
+
   const restoredId = state.ui.selectedScriptId;
   const targetId =
     restoredId && scripts[restoredId] ? restoredId : scriptIds[0];
+  const target = scripts[targetId];
+
+  if (target) {
+    listenerApi.dispatch(ensureDraft(target));
+  }
 
   listenerApi.dispatch(setCurrentUserscript(targetId));
 }

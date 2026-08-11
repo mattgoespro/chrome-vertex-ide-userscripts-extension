@@ -8,11 +8,6 @@ export {
   deleteUserscript,
   toggleUserscript,
 } from "./thunks.crud";
-export {
-  saveUserscriptDraft,
-  updateUserscript,
-  updateUserscriptCode,
-  updateUserscriptTypeDefinitions,
-} from "./thunks.save";
+export { persistScriptBuffers, updateUserscript } from "./thunks.save";
 export { rebuildCompiledUserscripts } from "./thunks.compile";
 export { importUserscripts } from "./thunks.import";

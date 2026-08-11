@@ -7,7 +7,7 @@ import {
   normalizeUserscript,
   toStorageSafeUserscript,
 } from "@shared/userscript-hydrate";
-import { uuid } from "@/shared/utils";
+import { uuid } from "@shared/utils";
 import type { RootState } from "../../store";
 import { compileAllOutputsOrThrow } from "./compile-helpers";
 import { sendApplyScriptsMessage } from "./messaging";

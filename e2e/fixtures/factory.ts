@@ -1,6 +1,6 @@
 import type { Userscript, GlobalModule, EditorSettings } from "@shared/model";
 import { sanitizeModuleName } from "@shared/model";
-import { v4 as uuid } from "uuid";
+import { uuid } from "@shared/utils";
 
 export function buildUserscript(
   overrides: Partial<Userscript> = {}

@@ -6,27 +6,20 @@ import {
   deleteUserscript,
   importUserscripts,
   loadUserscripts,
-  saveUserscriptDraft,
-  updateUserscriptCode,
-  updateUserscriptTypeDefinitions,
+  persistScriptBuffers,
 } from "../userscripts/thunks.userscripts";
-import { saveEditorCode } from "../code-editor/thunks.code-editor";
 import { commitDraftForSave } from "./actions";
 import {
   applyCommitDraftForSave,
   applyFlushModelToDraft,
-  applyMarkDraftClean,
-  applyRemoteScriptAndClearConflict,
   applyResolveAllConflictsTakeRemote,
   applyResolveConflictKeepLocal,
   applyResolveConflictTakeRemote,
   applySaveRejectionDirtyRestore,
-  applySuccessfulCodeSave,
   applyUpdateDraftBuffer,
 } from "./editor-drafts-transitions";
 import {
   bumpDraftRevision,
-  draftBufferForCodeLanguage,
   draftFromScript,
   DraftBuffer,
   EditorDraft,
@@ -102,30 +95,6 @@ const editorDraftsSlice = createSlice({
         }
 
         applyUpdateDraftBuffer(draft, buffer, code);
-      },
-    },
-    markDraftClean: {
-      prepare: (args: { scriptId: string; buffer: DraftBuffer }) => ({
-        payload: args,
-      }),
-      reducer: (
-        state,
-        action: PayloadAction<{ scriptId: string; buffer: DraftBuffer }>
-      ) => {
-        const { scriptId, buffer } = action.payload;
-        const draft = state.drafts[scriptId];
-
-        if (!draft) {
-          return;
-        }
-
-        applyMarkDraftClean(draft, buffer);
-      },
-    },
-    applyRemoteScript: {
-      prepare: (script: Userscript) => ({ payload: script }),
-      reducer: (state, action: PayloadAction<Userscript>) => {
-        applyRemoteScriptAndClearConflict(state, action.payload);
       },
     },
     syncDraftFromRemoteScript: {
@@ -251,33 +220,7 @@ const editorDraftsSlice = createSlice({
           state.drafts[script.id] = draftFromScript(script);
         }
       })
-      .addCase(updateUserscriptCode.fulfilled, (state, action) => {
-        const script = action.payload;
-        const draft = state.drafts[script.id];
-
-        if (!draft) {
-          return;
-        }
-
-        draft.typescript = script.code.source.typescript;
-        draft.scss = script.code.source.scss;
-        draft.dirty.typescript = false;
-        draft.dirty.scss = false;
-        draft.revision += 1;
-      })
-      .addCase(updateUserscriptTypeDefinitions.fulfilled, (state, action) => {
-        const script = action.payload;
-        const draft = state.drafts[script.id];
-
-        if (!draft) {
-          return;
-        }
-
-        draft.typeDefinitions = script.typeDefinitions ?? "";
-        draft.dirty.typeDefinitions = false;
-        draft.revision += 1;
-      })
-      .addCase(saveUserscriptDraft.fulfilled, (state, action) => {
+      .addCase(persistScriptBuffers.fulfilled, (state, action) => {
         const script = action.payload.script;
         const draft = state.drafts[script.id];
 
@@ -286,56 +229,44 @@ const editorDraftsSlice = createSlice({
           return;
         }
 
+        // commitDraftForSave already cleared dirty + lastSynced; mirror the
+        // persisted entity and drop any pending conflict for this script.
         draft.typescript = script.code.source.typescript;
         draft.scss = script.code.source.scss;
         draft.typeDefinitions = script.typeDefinitions ?? "";
         draft.dirty.typescript = false;
         draft.dirty.scss = false;
         draft.dirty.typeDefinitions = false;
+        draft.lastSynced.typescript = draft.typescript;
+        draft.lastSynced.scss = draft.scss;
+        draft.lastSynced.typeDefinitions = draft.typeDefinitions;
         draft.revision += 1;
         delete state.pendingConflicts[script.id];
       })
-      .addCase(saveEditorCode.fulfilled, (state, action) => {
-        const { scriptId, language } = action.meta.arg;
-        const draft = state.drafts[scriptId];
-
-        if (!draft) {
-          return;
-        }
-
-        const buffer = draftBufferForCodeLanguage(language);
-
-        applySuccessfulCodeSave(draft, buffer, action.payload.code);
-      })
       // commitDraftForSave runs before the sync write so same-tab storage echoes
-      // do not false-positive; if the write fails, restore the dirty flag.
+      // do not false-positive; if the write fails, restore dirty flags.
       // Ignore rejections from superseded in-flight saves so a stale failure
       // cannot mark the draft dirty after a newer save already committed.
-      .addCase(updateUserscriptCode.rejected, (state, action) => {
-        const { id, language } = action.meta.arg;
-        const draft = state.drafts[id];
+      .addCase(persistScriptBuffers.rejected, (state, action) => {
+        const draft = state.drafts[action.meta.arg.scriptId];
 
         if (!draft) {
           return;
         }
 
-        const buffer: DraftBuffer =
-          language === "typescript" ? "typescript" : "scss";
-
-        applySaveRejectionDirtyRestore(draft, buffer, action.meta.requestId);
-      })
-      .addCase(updateUserscriptTypeDefinitions.rejected, (state, action) => {
-        const draft = state.drafts[action.meta.arg.id];
-
-        if (!draft) {
-          return;
-        }
-
-        applySaveRejectionDirtyRestore(
-          draft,
+        const buffers: DraftBuffer[] = [
+          "typescript",
+          "scss",
           "typeDefinitions",
-          action.meta.requestId
-        );
+        ];
+
+        for (const buffer of buffers) {
+          applySaveRejectionDirtyRestore(
+            draft,
+            buffer,
+            action.meta.requestId
+          );
+        }
       });
   },
 });
@@ -343,8 +274,6 @@ const editorDraftsSlice = createSlice({
 export const {
   ensureDraft,
   updateDraftBuffer,
-  markDraftClean,
-  applyRemoteScript,
   syncDraftFromRemoteScript,
   removeDraft,
   enqueueConflict,
@@ -365,11 +294,7 @@ export {
 } from "./helpers";
 
 export {
-  selectDraftBuffer,
   selectDraftForScript,
-  selectDraftRevision,
-  selectHasPendingConflicts,
-  selectIsDraftBufferDirty,
   selectIsDraftDirty,
   selectPendingConflicts,
 } from "./selectors";
@@ -383,7 +308,6 @@ export {
 } from "./state.editor-drafts";
 
 export {
-  rebuildDraftsPreservingDirty,
   applyUpdateDraftBuffer,
   applyFlushModelToDraft,
   applyCommitDraftForSave,

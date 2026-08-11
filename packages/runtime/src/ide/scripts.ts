@@ -5,6 +5,7 @@ import {
   Userscript,
   Userscripts,
 } from "@shared/model";
+import { resolveSharedScriptIdsFromSourceOrThrow } from "@shared/resolve-shared-scripts";
 import { ChromeSyncStorage, CompiledCodeStorage } from "@shared/storage";
 import { matchesUrlPattern } from "@shared/url-matching";
 import { hydrateUserscriptWithCompiled } from "@shared/userscript-hydrate";
@@ -16,6 +17,25 @@ import {
 } from "./css-bookmarks";
 
 const INLINE_EXECUTION_STATE_KEY = "__INVERT_INLINE_EXECUTION__";
+
+/**
+ * Prefer live source imports; fall back to persisted sharedScripts when
+ * resolution fails (e.g. temporarily missing shared module).
+ */
+function sharedScriptIdsForInjection(
+  script: Userscript,
+  scriptsMap: Userscripts
+): string[] {
+  try {
+    return resolveSharedScriptIdsFromSourceOrThrow(
+      script,
+      scriptsMap,
+      script.code.source.typescript
+    );
+  } catch {
+    return script.sharedScripts ?? [];
+  }
+}
 
 export interface RuntimeInjectionState {
   scriptsMap: Userscripts;
@@ -108,10 +128,8 @@ async function injectResolvedScripts(
 
   const scriptIdsToFetch = new Set<string>(scripts.map((s) => s.id));
   for (const script of scripts) {
-    if (script.sharedScripts?.length > 0) {
-      for (const sharedId of script.sharedScripts) {
-        scriptIdsToFetch.add(sharedId);
-      }
+    for (const sharedId of sharedScriptIdsForInjection(script, scriptsMap)) {
+      scriptIdsToFetch.add(sharedId);
     }
   }
 
@@ -152,22 +170,20 @@ async function injectResolvedScripts(
   const injectedShared = new Set<string>();
 
   for (const script of resolvedScripts) {
-    if (script.sharedScripts?.length > 0) {
-      for (const sharedId of script.sharedScripts) {
-        if (injectedShared.has(sharedId)) {
-          continue;
-        }
-        const shared = scriptById.get(sharedId);
+    for (const sharedId of sharedScriptIdsForInjection(script, scriptsMap)) {
+      if (injectedShared.has(sharedId)) {
+        continue;
+      }
+      const shared = scriptById.get(sharedId);
 
-        if (shared?.shared) {
-          const resolvedShared = hydrateUserscriptWithCompiled(
-            shared,
-            compiledCodeMap[sharedId]
-          );
-          if (resolvedShared.code?.compiled?.javascript) {
-            await injectSharedScript(tabId, resolvedShared);
-            injectedShared.add(sharedId);
-          }
+      if (shared?.shared) {
+        const resolvedShared = hydrateUserscriptWithCompiled(
+          shared,
+          compiledCodeMap[sharedId]
+        );
+        if (resolvedShared.code?.compiled?.javascript) {
+          await injectSharedScript(tabId, resolvedShared);
+          injectedShared.add(sharedId);
         }
       }
     }

@@ -1,6 +1,6 @@
 import { createAsyncThunk } from "@reduxjs/toolkit/react";
 import { buildCompiledCodeEntry } from "@shared/compile-metadata";
-import type { Userscript, UserscriptSourceLanguage } from "@shared/model";
+import type { Userscript } from "@shared/model";
 import {
   hasSharedJavascriptConfigChanged,
   resolveSharedScriptIdsFromSourceOrThrow,
@@ -18,6 +18,7 @@ import {
   extractUserscriptMetadataUpdates,
   getDraftOrSavedSource,
 } from "../editor-drafts/helpers";
+import type { DraftBuffer } from "../editor-drafts/state.editor-drafts";
 import type { RootState } from "../../store";
 import {
   compileAllOutputsOrThrow,
@@ -108,162 +109,123 @@ export const updateUserscript = createAsyncThunk<
   return normalizedScript;
 });
 
-export const updateUserscriptTypeDefinitions = createAsyncThunk(
-  "userscripts/updateUserscriptTypeDefinitions",
-  async (
-    { id, typeDefinitions }: { id: string; typeDefinitions: string },
-    { dispatch, requestId }
-  ) => {
-    const scriptsMap = await ChromeSyncStorage.getAllScripts();
-    const script = normalizeUserscript(scriptsMap[id]);
+export type PersistScriptBuffersArgs = {
+  scriptId: string;
+  /**
+   * Optional buffer overrides merged over the current draft (e.g.
+   * Prettier-formatted Ctrl+S content for the focused pane).
+   */
+  bufferOverrides?: Partial<Record<DraftBuffer, string>>;
+  /** Re-inject matching tabs after save. Default true. */
+  applyTabs?: boolean;
+  /**
+   * Compile TS/SCSS before persisting. Default true. Type-definition-only
+   * saves set this false so broken TypeScript cannot block a types edit.
+   */
+  compile?: boolean;
+};
 
-    script.typeDefinitions = typeDefinitions;
-    script.status = "saved";
-    script.updatedAt = Date.now();
-
-    // Commit before the sync write so the same-tab storage echo does not treat
-    // this save as a remote conflict against a still-dirty draft.
-    dispatch(
-      commitDraftForSave({
-        scriptId: id,
-        buffer: "typeDefinitions",
-        code: typeDefinitions,
-        saveRequestId: requestId,
-      })
-    );
-
-    await ChromeSyncStorage.updateScript(id, toStorageSafeUserscript(script));
-
-    return script;
-  }
-);
-
-export const updateUserscriptCode = createAsyncThunk<
-  Userscript,
-  {
-    id: string;
-    language: UserscriptSourceLanguage;
-    code: string;
-  },
+/**
+ * Canonical write path for open-document draft buffers: resolve shared
+ * imports → optional compile → commit drafts clean → sync + local → optional apply.
+ */
+export const persistScriptBuffers = createAsyncThunk<
+  { script: Userscript; appliedTabCount: number },
+  PersistScriptBuffersArgs,
   { state: RootState }
 >(
-  "userscripts/updateUserscriptCode",
-  async ({ id, language, code }, { getState, dispatch, requestId }) => {
-    const scriptsMap = await ChromeSyncStorage.getAllScripts();
-    const script = normalizeUserscript(scriptsMap[id]);
+  "userscripts/persistScriptBuffers",
+  async (
+    { scriptId, bufferOverrides, applyTabs = true, compile = true },
+    { getState, dispatch, requestId }
+  ) => {
+    const state = getState();
+    const draft = state.editorDrafts.drafts[scriptId];
 
-    if (language === "typescript") {
-      script.code.source.typescript = code;
+    if (!draft) {
+      throw new Error(`No editor draft found for script: ${scriptId}`);
+    }
+
+    const typescript = bufferOverrides?.typescript ?? draft.typescript;
+    const scss = bufferOverrides?.scss ?? draft.scss;
+    const typeDefinitions =
+      bufferOverrides?.typeDefinitions ?? draft.typeDefinitions;
+
+    const scriptsMap = await ChromeSyncStorage.getAllScripts();
+    const script = normalizeUserscript(scriptsMap[scriptId]);
+
+    if (!script) {
+      throw new Error(`Userscript not found: ${scriptId}`);
+    }
+
+    script.code.source.typescript = typescript;
+    script.code.source.scss = scss;
+    script.typeDefinitions = typeDefinitions;
+
+    try {
       script.sharedScripts = resolveSharedScriptIdsFromSourceOrThrow(
         script,
         scriptsMap,
-        code
+        typescript
       );
-    } else if (language === "scss") {
-      script.code.source.scss = code;
+    } catch (error) {
+      // Types-only saves must not fail on unresolved imports in draft TS.
+      if (compile) {
+        throw error;
+      }
     }
 
-    const compiledEntry = await compileAllOutputsOrThrow(script, getState());
+    let compiledEntry = await CompiledCodeStorage.getCompiledCode(scriptId);
 
-    script.code.compiled.javascript = compiledEntry.javascript;
-    script.code.compiled.css = compiledEntry.css;
+    if (compile) {
+      compiledEntry = await compileAllOutputsOrThrow(script, getState());
+      script.code.compiled.javascript = compiledEntry.javascript;
+      script.code.compiled.css = compiledEntry.css;
+    } else if (compiledEntry) {
+      script.code.compiled.javascript = compiledEntry.javascript;
+      script.code.compiled.css = compiledEntry.css;
+    }
 
     script.status = "saved";
     script.updatedAt = Date.now();
 
-    // Commit immediately before the sync write. Doing this earlier (e.g. before
-    // compile) would leave the draft clean if compilation fails; doing it after
-    // the write allows the same-tab onChanged echo to race a dirty draft.
-    dispatch(
-      commitDraftForSave({
-        scriptId: id,
-        buffer: language === "typescript" ? "typescript" : "scss",
-        code,
-        saveRequestId: requestId,
-      })
+    // Commit immediately before the sync write so same-tab onChanged echoes
+    // do not race a still-dirty draft.
+    const committed: Array<{ buffer: DraftBuffer; code: string }> = [
+      { buffer: "typescript", code: typescript },
+      { buffer: "scss", code: scss },
+      { buffer: "typeDefinitions", code: typeDefinitions },
+    ];
+
+    for (const { buffer, code } of committed) {
+      dispatch(
+        commitDraftForSave({
+          scriptId,
+          buffer,
+          code,
+          saveRequestId: requestId,
+        })
+      );
+    }
+
+    await ChromeSyncStorage.updateScript(
+      scriptId,
+      toStorageSafeUserscript(script)
     );
 
-    await ChromeSyncStorage.updateScript(id, toStorageSafeUserscript(script));
-    await CompiledCodeStorage.saveCompiledCode(id, compiledEntry);
+    if (compile && compiledEntry) {
+      await CompiledCodeStorage.saveCompiledCode(scriptId, compiledEntry);
+    }
 
-    return script;
+    const applyResult = applyTabs
+      ? await sendApplyScriptsMessage([scriptId])
+      : { appliedTabCount: 0 };
+
+    return {
+      script: compiledEntry
+        ? mergeCompiledCode(script, compiledEntry)
+        : script,
+      appliedTabCount: applyResult.appliedTabCount,
+    };
   }
 );
-
-/**
- * Single write path for persisting the open-document draft buffers to sync
- * storage (compile → storage → apply). Used by conflict keep-local and as the
- * canonical full-buffer save.
- */
-export const saveUserscriptDraft = createAsyncThunk<
-  { script: Userscript; appliedTabCount: number },
-  string,
-  { state: RootState }
->("userscripts/saveUserscriptDraft", async (scriptId, { getState, dispatch, requestId }) => {
-  const state = getState();
-  const draft = state.editorDrafts.drafts[scriptId];
-
-  if (!draft) {
-    throw new Error(`No editor draft found for script: ${scriptId}`);
-  }
-
-  const scriptsMap = await ChromeSyncStorage.getAllScripts();
-  const script = normalizeUserscript(scriptsMap[scriptId]);
-
-  if (!script) {
-    throw new Error(`Userscript not found: ${scriptId}`);
-  }
-
-  script.code.source.typescript = draft.typescript;
-  script.code.source.scss = draft.scss;
-  script.typeDefinitions = draft.typeDefinitions;
-  script.sharedScripts = resolveSharedScriptIdsFromSourceOrThrow(
-    script,
-    scriptsMap,
-    draft.typescript
-  );
-
-  const compiledEntry = await compileAllOutputsOrThrow(script, state);
-
-  script.code.compiled.javascript = compiledEntry.javascript;
-  script.code.compiled.css = compiledEntry.css;
-  script.status = "saved";
-  script.updatedAt = Date.now();
-
-  dispatch(
-    commitDraftForSave({
-      scriptId,
-      buffer: "typescript",
-      code: draft.typescript,
-      saveRequestId: requestId,
-    })
-  );
-  dispatch(
-    commitDraftForSave({
-      scriptId,
-      buffer: "scss",
-      code: draft.scss,
-      saveRequestId: requestId,
-    })
-  );
-  dispatch(
-    commitDraftForSave({
-      scriptId,
-      buffer: "typeDefinitions",
-      code: draft.typeDefinitions,
-      saveRequestId: requestId,
-    })
-  );
-
-  await ChromeSyncStorage.updateScript(
-    scriptId,
-    toStorageSafeUserscript(script)
-  );
-  await CompiledCodeStorage.saveCompiledCode(scriptId, compiledEntry);
-  const applyResult = await sendApplyScriptsMessage([scriptId]);
-
-  return {
-    script: mergeCompiledCode(script, compiledEntry),
-    appliedTabCount: applyResult.appliedTabCount,
-  };
-});

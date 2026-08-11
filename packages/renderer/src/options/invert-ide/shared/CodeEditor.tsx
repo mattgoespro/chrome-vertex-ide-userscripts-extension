@@ -21,6 +21,9 @@ export type CodeEditorProps = {
    * up front, content-synced by the WorkspaceService, never disposed by the
    * editor). Absent for auxiliary editors (previews, compiled output) whose
    * detached models this component owns and disposes.
+   *
+   * Monaco → draft flush on script switch is owned by `selectUserscript`, not
+   * by this component's unmount path.
    */
   scriptId?: string;
   contents: string;
@@ -159,8 +162,10 @@ export function CodeEditor(props: CodeEditorProps) {
       onCodeModifiedRef.current?.(model.getValue());
     });
 
-    return () => disposable.dispose();
-  }, [modelId, language, isWorkspaceModel]);
+    return () => {
+      disposable.dispose();
+    };
+  }, [modelId, language, isWorkspaceModel, contents]);
 
   // Detached preview models have no workspace sync; mirror the contents prop.
   useEffect(() => {

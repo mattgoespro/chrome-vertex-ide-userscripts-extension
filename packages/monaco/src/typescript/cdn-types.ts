@@ -259,10 +259,14 @@ const cdnLibEntries = new Map<string, CdnLibEntry>();
 let syncGeneration = 0;
 
 /**
- * Syncs CDN module type registrations with the provided list. Fetching and
- * registration are asynchronous and incremental: each package's files are
- * registered as soon as they resolve, so editors keep working while types
- * stream in. Disposes registrations for modules no longer in the list.
+ * Syncs CDN module type registrations with the provided list. Callers should
+ * pass every configured CDN module (eager global set), not only those attached
+ * to the active script — otherwise switching scripts disposes libs and causes
+ * brief "cannot find module" diagnostics.
+ *
+ * Fetching and registration are asynchronous and incremental: each package's
+ * files are registered as soon as they resolve. Disposes registrations for
+ * modules no longer in the list (e.g. deleted from storage).
  */
 export async function syncCdnModuleLibs(
   modules: CdnModuleInfo[]

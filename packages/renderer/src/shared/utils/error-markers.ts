@@ -1,6 +1,6 @@
 import { CompilationError } from "@shared/errors";
+import { uuid } from "@shared/utils";
 import * as monaco from "monaco-editor";
-import { v4 as uuid } from "uuid";
 
 /**
  * Converts TypeScript diagnostics to CompilationError format
